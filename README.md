@@ -139,3 +139,11 @@ python -m task5_feedback.compare_feedback --config configs/feedback.yaml
 - Record peak VRAM and wall-clock time for the standard PPO and GRPO continuations.
 
 See the assignment manual for the required experiments, metrics, and report questions.
+
+## 7. Precision deviation from the released config
+
+The released config specifies `dtype: float16` and ships no loss scaler or autocast context. With a fp16 base, PEFT creates the trainable LoRA adapters in fp16 as well; optimizing fp16 master weights with AdamW underflows (the optimizer moments and the `w -= lr*grad` update fall below the fp16 ULP), and `clip_grad_norm_` over fp16 gradients can overflow to inf/nan. The training/evaluation loops therefore keep the frozen base in fp16 but upcast the **trainable LoRA master weights to fp32**, run every forward under **autocast(fp16)**, and use a **GradScaler**. The identical precision path is applied in training, evaluation, and every ablation fork (centralized in `common/precision.py`), because KL, preference accuracy, and DPO loss are all differences of log-probs and a mismatched path between conditions would invalidate the comparison.
+
+## 8. Code attribution
+
+Portions of the training/evaluation/ablation scaffolding in this repository were implemented with coding assistance from an LLM (Anthropic Claude). All submitted code was reviewed, tested, and is understood by the author, who is responsible for every line. The PDF report is written entirely by the author without AI assistance.
