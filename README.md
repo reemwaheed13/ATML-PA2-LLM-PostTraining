@@ -140,9 +140,9 @@ python -m task5_feedback.compare_feedback --config configs/feedback.yaml
 
 See the assignment manual for the required experiments, metrics, and report questions.
 
-## 7. Precision deviation from the released config
+## 7. Precision path
 
-The released config specifies `dtype: float16` and ships no loss scaler or autocast context. With a fp16 base, PEFT creates the trainable LoRA adapters in fp16 as well; optimizing fp16 master weights with AdamW underflows (the optimizer moments and the `w -= lr*grad` update fall below the fp16 ULP), and `clip_grad_norm_` over fp16 gradients can overflow to inf/nan. The training/evaluation loops therefore keep the frozen base in fp16 but upcast the **trainable LoRA master weights to fp32**, run every forward under **autocast(fp16)**, and use a **GradScaler**. The identical precision path is applied in training, evaluation, and every ablation fork (centralized in `common/precision.py`), because KL, preference accuracy, and DPO loss are all differences of log-probs and a mismatched path between conditions would invalidate the comparison.
+The frozen base model loads in fp16 per the config (`dtype: float16`). PEFT 0.17.1 keeps the trainable LoRA adapter parameters in fp32 (empirically verified: `lora_A`/`lora_B` are `torch.float32`), so the optimizer trains fp32 parameters. The released code ships no autocast context or loss scaler; the training/evaluation loops add both: forward passes run under **autocast(fp16)** for speed and memory, and a **GradScaler** guards the fp16 activation gradients produced inside the autocast region from underflow. There is no dtype mismatch in the LoRA forward path — PEFT casts the activation to the adapter dtype and casts the result back, and autocast governs op precision. The identical precision path is centralized in `common/precision.py` and applied in training, evaluation, and every ablation fork, because KL, preference accuracy, and DPO loss are all differences of log-probs and a mismatched path between conditions would invalidate the comparison.
 
 ## 8. Code attribution
 

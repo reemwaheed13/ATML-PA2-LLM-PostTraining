@@ -46,8 +46,9 @@ def prepare_dpo_run(config_path: str, dataset_path: str | None = None, beta: flo
 
     tokenizer = load_tokenizer(cfg["base_model"])
     model = load_policy(cfg, trainable=True, fresh_lora=True)
-    # Precision fix (README "Precision deviation"): fp32 LoRA master weights BEFORE
-    # the optimizer is built, so AdamW moments and clip_grad_norm_ run in fp32.
+    # Defensive guard (see README "Precision path"): PEFT 0.17.1 already keeps the
+    # LoRA adapter in fp32, so this is normally a no-op (n_fp32 == 0). It only acts
+    # if a version/config change produced fp16/bf16 trainable params.
     n_fp32 = upcast_trainable_to_fp32(model)
 
     # Deterministic, resume-safe shuffle: fixed generator -> same order every launch,
@@ -178,7 +179,7 @@ def run_training(
         "max_sequence_length": int(cfg["max_sequence_length"]),
         "max_grad_norm": max_norm,
         "dtype": cfg.get("dtype"),
-        "precision": "fp32-lora-master+autocast-fp16+gradscaler",
+        "precision": "base_fp16+lora_fp32_peft_native+autocast_fp16+gradscaler",
         "trainable_fp32_tensors": bundle["n_fp32"],
         "total_opt_steps_planned": total_opt_steps,
     })

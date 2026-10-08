@@ -213,7 +213,7 @@ def run_evaluation(config_path, adapter, name="standard", beta=None, max_example
             "max_prompt_length": int(cfg.get("max_prompt_length", int(cfg["max_sequence_length"]) - int(cfg["max_generation_tokens"]))),
             "samples_per_prompt": 1,
         },
-        "precision": "fp32-lora-master+autocast-fp16+gradscaler",
+        "precision": "base_fp16+lora_fp32_peft_native+autocast_fp16+gradscaler",
         "qualitative_candidates": _qualitative_candidates(gen_recs, pair_recs),
     }
     save_json(eval_path, summary)

@@ -1,18 +1,23 @@
 """Single source of truth for the DPO/RL precision path.
 
-The released configuration specifies `dtype: float16` and ships no loss scaler or
-autocast context. With a fp16 base model, PEFT creates the trainable LoRA
-adapters in fp16 as well; optimizing fp16 master weights with AdamW underflows
-(the optimizer moments and the `w -= lr*grad` update are smaller than the fp16
-ULP), and `clip_grad_norm_` over fp16 gradients can overflow to inf/nan.
+Precision facts for this codebase (PEFT 0.17.1, empirically verified):
+- The frozen base model loads in fp16 per the config (`dtype: float16`).
+- PEFT keeps the trainable LoRA adapter parameters in fp32; it does NOT cast them
+  to the fp16 base dtype. The trainable params are already fp32, so there is no
+  fp16-AdamW optimizer-underflow problem to fix.
+- The forward passes run under autocast(fp16) for speed/memory: base and LoRA
+  matmuls execute in fp16. There is no dtype mismatch in the LoRA path - PEFT
+  casts the activation to the adapter dtype and casts the result back, and
+  autocast governs op precision (holds with or without autocast active).
+- A GradScaler guards the fp16 activation gradients produced inside the autocast
+  region from underflow (grads flowing through fp16 matmuls before they accumulate
+  into the fp32 param .grad). It is not about fp16 parameters.
 
-Fix (see README "Precision deviation"): keep the frozen base in fp16, upcast the
-trainable LoRA master weights to fp32, run every forward under autocast(fp16),
-and use a GradScaler. EVERY entry point (train, evaluate, ablations) must compute
-log-probs through `sequence_logprobs` here so the numerical path is identical
-across training, evaluation, the standard run, and all ablation forks. KL,
-preference accuracy, and DPO loss are all differences of log-probs; a mismatched
-precision path between conditions would invalidate the comparison.
+EVERY entry point (train, evaluate, ablations) must compute log-probs through the
+wrappers here so the numerical path is identical across training, evaluation, the
+standard run, and all ablation forks. KL, preference accuracy, and DPO loss are
+all differences of log-probs; a mismatched precision path between conditions
+would invalidate the comparison.
 """
 
 from __future__ import annotations
@@ -39,9 +44,11 @@ def autocast_context(cfg: dict):
 
 
 def upcast_trainable_to_fp32(model) -> int:
-    """Cast trainable (LoRA) params to fp32 master weights. Call BEFORE building
-    the optimizer so AdamW moments and gradient clipping are computed in fp32.
-    Returns the number of tensors upcast."""
+    """Defensive guard: ensure trainable params are fp32 before building the
+    optimizer. Under PEFT 0.17.1 the LoRA adapter is ALREADY fp32, so this is a
+    no-op and returns 0 (surfaced as `trainable_fp32_tensors` in the run meta).
+    It only acts if a different PEFT version or config ever produced fp16/bf16
+    trainable params, which would be a poor choice for AdamW. Returns the count."""
     n = 0
     for p in model.parameters():
         if p.requires_grad and p.dtype in (torch.float16, torch.bfloat16):
