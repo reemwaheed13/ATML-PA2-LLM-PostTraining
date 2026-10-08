@@ -21,7 +21,7 @@ from contextlib import nullcontext
 
 import torch
 
-from common.generation import response_sequence_logprobs
+from common.generation import response_sequence_logprobs, response_token_logprobs
 
 
 def amp_dtype(cfg: dict) -> torch.dtype:
@@ -66,3 +66,14 @@ def sequence_logprobs(model, batch: dict, cfg: dict):
     """
     with autocast_context(cfg):
         return response_sequence_logprobs(model, batch)
+
+
+def token_logprobs(model, sequences, attention_mask, prompt_width, response_ids, cfg: dict):
+    """Per-token log-probs of already-generated response tokens, under the shared
+    autocast path. Returns (per_token_logp, logits) like
+    `common.generation.response_token_logprobs`. Used for the sampled-KL estimator
+    so generation-time log-probs match the training/eval numerics. Caller controls
+    grad / `reference_mode`.
+    """
+    with autocast_context(cfg):
+        return response_token_logprobs(model, sequences, attention_mask, prompt_width, response_ids)
