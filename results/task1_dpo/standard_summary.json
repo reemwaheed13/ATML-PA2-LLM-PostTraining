@@ -1,0 +1,8 @@
+{
+  "run_name": "standard",
+  "output": "/content/ATML-PA2-LLM-PostTraining/outputs/task1_dpo/standard",
+  "opt_steps": 92,
+  "seen_examples": 1483,
+  "wall_seconds": 756.1918978759995,
+  "peak_vram_gb": 9.881852416
+}

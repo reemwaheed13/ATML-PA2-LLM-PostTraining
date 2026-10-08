@@ -1,0 +1,8 @@
+{
+  "run_name": "smoke",
+  "output": "/content/ATML-PA2-LLM-PostTraining/outputs/task1_dpo/smoke",
+  "opt_steps": 4,
+  "seen_examples": 64,
+  "wall_seconds": 34.09851367800002,
+  "peak_vram_gb": 9.872085504
+}
