@@ -144,6 +144,14 @@ See the assignment manual for the required experiments, metrics, and report ques
 
 The frozen base model loads in fp16 per the config (`dtype: float16`). PEFT 0.17.1 keeps the trainable LoRA adapter parameters in fp32 (empirically verified: `lora_A`/`lora_B` are `torch.float32`), so the optimizer trains fp32 parameters. The released code ships no autocast context or loss scaler; the training/evaluation loops add both: forward passes run under **autocast(fp16)** for speed and memory, and a **GradScaler** guards the fp16 activation gradients produced inside the autocast region from underflow. There is no dtype mismatch in the LoRA forward path — PEFT casts the activation to the adapter dtype and casts the result back, and autocast governs op precision. The identical precision path is centralized in `common/precision.py` and applied in training, evaluation, and every ablation fork, because KL, preference accuracy, and DPO loss are all differences of log-probs and a mismatched path between conditions would invalidate the comparison.
 
-## 8. Code attribution
+## 8. Over-length prompt handling (DPO)
+
+We raise `max_sequence_length` from the released 768 to **1152** and then filter residual over-length examples on **prompt length only**, identically across all conditions (standard run, the three beta forks, the length-balanced run, and both eval sets), recording the exact retained/dropped indices per run in `results/task1_dpo/<run_name>_filter.json`.
+
+Rationale: at 1152 the length-stratified eval set has **zero** over-length prompts (longest is 1109), so the 82/82/82 stratum balance that Task 1 Step 3 depends on survives fully intact. Residual drops elsewhere are ~1%: 17/1500 standard train, 3/300 standard eval, 11/1500 length-balanced train. At the released 768 the stratified eval would lose 9 examples unevenly (3/4/2 across strata), which would compromise the length-confounding comparison. The filter is on prompt length only — never response length — so it cannot un-balance a stratified set, and the fork/smoke subset is drawn **after** filtering so `--max-examples N` always yields N clean examples with reproducible indices.
+
+The generation cap at evaluation (`max_generation_tokens = 256`) is a **separate** config key, left unchanged, so response-length statistics remain comparable across conditions. `max_prompt_length` is set explicitly to 1152 (not derived from `max_sequence_length`) so that no prompt which passes the over-length filter is truncated during evaluation generation.
+
+## 9. Code attribution
 
 Portions of the training/evaluation/ablation scaffolding in this repository were implemented with coding assistance from an LLM (Anthropic Claude). All submitted code was reviewed, tested, and is understood by the author, who is responsible for every line. The PDF report is written entirely by the author without AI assistance.

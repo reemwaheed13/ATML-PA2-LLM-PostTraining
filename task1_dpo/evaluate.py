@@ -13,6 +13,7 @@ from common.data import (
     repo_path,
     write_jsonl,
 )
+from common.filtering import load_filtered_rows
 from common.generation import batch_generate, score_reward_pairs
 from common.logging_utils import append_jsonl, save_json, set_seed
 from common.models import load_policy, load_reward_model, load_tokenizer, reference_mode
@@ -182,12 +183,18 @@ def _qualitative_candidates(gen_recs, pair_recs, k=5):
 def run_evaluation(config_path, adapter, name="standard", beta=None, max_examples=None, resume=True, fresh=False):
     cfg = load_yaml(config_path)
     set_seed(int(cfg["seed"]))
-    rows = read_jsonl(cfg["paths"]["dpo_standard_eval"])
-    if max_examples is not None:
-        rows = rows[: int(max_examples)]
     beta = float(cfg["beta"] if beta is None else beta)
 
     tokenizer = load_tokenizer(cfg["base_model"])
+    # Same prompt-length filter as training, recorded to <name>_filter.json, so the
+    # held-out numbers are comparable across conditions. Subset after filtering.
+    rows, _ = load_filtered_rows(
+        cfg["paths"]["dpo_standard_eval"], tokenizer, int(cfg["max_sequence_length"]),
+        results_dir=cfg["results_dir"], run_name=name,
+    )
+    if max_examples is not None:
+        rows = rows[: int(max_examples)]
+
     policy = load_policy(cfg, adapter_path=adapter, trainable=False)
     rm_model, rm_tok = load_reward_model(cfg)
 

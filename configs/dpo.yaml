@@ -7,8 +7,12 @@ batch_size: 2
 grad_accum_steps: 8
 epochs: 1
 short_ablation_examples: 600
-max_sequence_length: 768
+max_sequence_length: 1152
 max_generation_tokens: 256
+# Explicit generation-time prompt cap (not derived from max_sequence_length), set
+# so no prompt that passes the over-length filter (< 1152) is truncated at eval
+# generation. The longest retained eval prompt is 1109. See README section 8.
+max_prompt_length: 1152
 max_grad_norm: 1.0
 standard_output: outputs/task1_dpo/standard
 length_output: outputs/task1_dpo/length_balanced

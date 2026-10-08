@@ -15,9 +15,9 @@ from common.data import (
     pad_batch,
     preference_responses,
     prompt_messages_from_preference,
-    read_jsonl,
     repo_path,
 )
+from common.filtering import load_filtered_rows
 from common.logging_utils import append_jsonl, save_json, set_seed, wall_timer
 from common.models import load_policy, load_tokenizer, reference_mode, trainable_parameters
 from common.precision import make_grad_scaler, sequence_logprobs, upcast_trainable_to_fp32
@@ -36,15 +36,23 @@ def make_collate(tokenizer, max_length):
     return collate
 
 
-def prepare_dpo_run(config_path: str, dataset_path: str | None = None, beta: float | None = None, max_examples: int | None = None):
+def prepare_dpo_run(config_path: str, dataset_path: str | None = None, beta: float | None = None, max_examples: int | None = None, run_name: str = "standard"):
     cfg = load_yaml(config_path)
     set_seed(int(cfg["seed"]))
     path = dataset_path or cfg["paths"]["dpo_standard_train"]
-    rows = read_jsonl(path)
+
+    tokenizer = load_tokenizer(cfg["base_model"])
+    # Filter over-length prompts at load, BEFORE shuffling; record the report to
+    # results/task1_dpo/<run_name>_filter.json (exact retained/dropped indices).
+    rows, filter_report = load_filtered_rows(
+        path, tokenizer, int(cfg["max_sequence_length"]),
+        results_dir=cfg["results_dir"], run_name=run_name,
+    )
+    # Fork/smoke subset is drawn AFTER the filter, so --max-examples yields that
+    # many CLEAN (fit-in-window) examples with reproducible indices.
     if max_examples is not None:
         rows = rows[: int(max_examples)]
 
-    tokenizer = load_tokenizer(cfg["base_model"])
     model = load_policy(cfg, trainable=True, fresh_lora=True)
     # Defensive guard (see README "Precision path"): PEFT 0.17.1 already keeps the
     # LoRA adapter in fp32, so this is normally a no-op (n_fp32 == 0). It only acts
@@ -77,6 +85,7 @@ def prepare_dpo_run(config_path: str, dataset_path: str | None = None, beta: flo
         "optimizer": optimizer,
         "beta": float(cfg["beta"] if beta is None else beta),
         "n_fp32": n_fp32,
+        "filter_report": filter_report,
     }
 
 
@@ -125,7 +134,7 @@ def run_training(
     max_examples: int | None = None,
     resume: bool = False,
 ):
-    bundle = prepare_dpo_run(config_path, dataset_path, beta, max_examples)
+    bundle = prepare_dpo_run(config_path, dataset_path, beta, max_examples, run_name)
     cfg = bundle["cfg"]
     model = bundle["model"]
     loader = bundle["loader"]
@@ -182,6 +191,10 @@ def run_training(
         "precision": "base_fp16+lora_fp32_peft_native+autocast_fp16+gradscaler",
         "trainable_fp32_tensors": bundle["n_fp32"],
         "total_opt_steps_planned": total_opt_steps,
+        "filtered_total": bundle["filter_report"]["total"],
+        "filtered_kept": bundle["filter_report"]["kept"],
+        "filtered_dropped": bundle["filter_report"]["dropped"],
+        "dataset_indices_used": bundle["filter_report"]["kept_idx"][: len(bundle["rows"])],
     })
 
     if torch.cuda.is_available():
