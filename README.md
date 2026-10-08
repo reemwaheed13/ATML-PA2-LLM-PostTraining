@@ -155,3 +155,35 @@ The generation cap at evaluation (`max_generation_tokens = 256`) is a **separate
 ## 9. Code attribution
 
 Portions of the training/evaluation/ablation scaffolding in this repository were implemented with coding assistance from an LLM (Anthropic Claude). All submitted code was reviewed, tested, and is understood by the author, who is responsible for every line. The PDF report is written entirely by the author without AI assistance.
+
+## 10. Task 1 run sequence (ordered)
+
+All runnable as `python -m ...` from the repo root; every run writes machine-readable output to `results/task1_dpo/`. The standard one-epoch run is already done.
+
+```bash
+# Training: three matched beta forks (600 clean examples each, same init/seed, ~6 min/fork on L4)
+python -m task1_dpo.train --config configs/dpo.yaml --run-name beta_0.03 --beta 0.03 --max-examples 600
+python -m task1_dpo.train --config configs/dpo.yaml --run-name beta_0.10 --beta 0.10 --max-examples 600
+python -m task1_dpo.train --config configs/dpo.yaml --run-name beta_0.30 --beta 0.30 --max-examples 600
+#   (equivalently, one command: python -m task1_dpo.ablate_beta --config configs/dpo.yaml)
+# Training: length-balanced condition (full epoch, default beta, ~14 min)
+python -m task1_dpo.train --config configs/dpo.yaml --run-name length_balanced --dataset data/dpo_length_balanced_train.jsonl
+
+# Evaluation on the standard held-out set (generation-dominated; ~equal cost per run)
+python -m task1_dpo.evaluate --config configs/dpo.yaml --adapter outputs/task1_dpo/standard        --name standard        --beta 0.10
+python -m task1_dpo.evaluate --config configs/dpo.yaml --adapter outputs/task1_dpo/beta_0.03       --name beta_0.03       --beta 0.03
+python -m task1_dpo.evaluate --config configs/dpo.yaml --adapter outputs/task1_dpo/beta_0.10       --name beta_0.10       --beta 0.10
+python -m task1_dpo.evaluate --config configs/dpo.yaml --adapter outputs/task1_dpo/beta_0.30       --name beta_0.30       --beta 0.30
+python -m task1_dpo.evaluate --config configs/dpo.yaml --adapter outputs/task1_dpo/length_balanced --name length_balanced --beta 0.10
+
+# Length-confounding analysis: per-stratum preference accuracy on the stratified eval + word-limit compliance
+python -m task1_dpo.analyze_length --config configs/dpo.yaml --adapter outputs/task1_dpo/standard        --name standard
+python -m task1_dpo.analyze_length --config configs/dpo.yaml --adapter outputs/task1_dpo/length_balanced --name length_balanced
+
+# Aggregation, figure, qualitative dump (CPU, pure read)
+python -m scripts.aggregate_task1 --config configs/dpo.yaml
+python -m scripts.plot_task1 --config configs/dpo.yaml --name standard
+python -m scripts.dump_task1_qualitative --config configs/dpo.yaml --name standard
+```
+
+Cost ordering: the five `evaluate` runs dominate (one 256-token generation per held-out prompt, ~297 prompts each); `analyze_length` is cheap (stratified pass is teacher-forced, plus 10 word-limit generations); aggregation/plot/dump are CPU-only. `evaluate.py` records `wall_seconds` and `sec_per_generation` in each `<name>_eval.json` so the measured per-example cost is available after the first run.

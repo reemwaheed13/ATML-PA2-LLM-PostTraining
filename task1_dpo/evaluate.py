@@ -15,7 +15,7 @@ from common.data import (
 )
 from common.filtering import load_filtered_rows
 from common.generation import batch_generate, score_reward_pairs
-from common.logging_utils import append_jsonl, save_json, set_seed
+from common.logging_utils import append_jsonl, save_json, set_seed, wall_timer
 from common.models import load_policy, load_reward_model, load_tokenizer, reference_mode
 from common.precision import sequence_logprobs, token_logprobs
 from task1_dpo.dpo import dpo_loss
@@ -205,9 +205,11 @@ def run_evaluation(config_path, adapter, name="standard", beta=None, max_example
     if fresh and gen_path.exists():
         gen_path.unlink()
 
+    timer = wall_timer()
     tf_metrics, pair_recs = _teacher_forced_pass(policy, tokenizer, rows, cfg, beta, pairs_path)
     _generation_pass(policy, tokenizer, rm_model, rm_tok, rows, cfg, gen_path, resume and not fresh)
     gen_recs, gen_metrics = _aggregate_generations(gen_path)
+    wall_seconds = timer()
 
     summary = {
         "name": name, "adapter": adapter, "beta": beta, "seed": int(cfg["seed"]),
@@ -221,6 +223,8 @@ def run_evaluation(config_path, adapter, name="standard", beta=None, max_example
             "samples_per_prompt": 1,
         },
         "precision": "base_fp16+lora_fp32_peft_native+autocast_fp16+gradscaler",
+        "wall_seconds": wall_seconds,
+        "sec_per_generation": (wall_seconds / gen_metrics["num_generations"]) if gen_metrics["num_generations"] else None,
         "qualitative_candidates": _qualitative_candidates(gen_recs, pair_recs),
     }
     save_json(eval_path, summary)
