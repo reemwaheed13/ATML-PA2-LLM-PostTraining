@@ -27,7 +27,6 @@ from common.data import (
     prompt_token_length,
     read_jsonl,
     repo_path,
-    row_stratum,
 )
 from common.logging_utils import save_json
 from common.models import load_tokenizer
@@ -67,7 +66,7 @@ def response_truncation(tokenizer, rows, caps):
     return out
 
 
-def analyze(name, path, tokenizer, max_length, with_strata, with_response):
+def analyze(name, path, tokenizer, max_length, with_response):
     rows = read_jsonl(path)
     lengths = np.array([prompt_token_length(tokenizer, row) for row in rows])
     over_idx = [i for i, L in enumerate(lengths) if L >= max_length]
@@ -84,15 +83,17 @@ def analyze(name, path, tokenizer, max_length, with_strata, with_response):
         "first_row_keys": sorted(rows[0].keys()),
     }
 
+    # Per-stratum ONLY when the dataset has a real stratum field; never derived.
     skey = detect_stratum_key(rows)
-    strat = [row_stratum(row, skey) for row in rows]
-    total_by = Counter(strat)
-    over_by = Counter(strat[i] for i in over_idx)
-    rec["stratum_key"] = skey or "(derived from response word counts)"
-    rec["per_stratum_total"] = dict(total_by)
-    rec["per_stratum_over"] = {s: over_by.get(s, 0) for s in total_by}
-    rec["per_stratum_retained"] = {s: total_by[s] - over_by.get(s, 0) for s in total_by}
-    rec["strata_retained_uneven"] = len(set(rec["per_stratum_retained"].values())) > 1
+    rec["stratum_key"] = skey
+    if skey:
+        strat = [str(row[skey]) for row in rows]
+        total_by = Counter(strat)
+        over_by = Counter(strat[i] for i in over_idx)
+        rec["per_stratum_total"] = dict(total_by)
+        rec["per_stratum_over"] = {s: over_by.get(s, 0) for s in total_by}
+        rec["per_stratum_retained"] = {s: total_by[s] - over_by.get(s, 0) for s in total_by}
+        rec["strata_retained_uneven"] = len(set(rec["per_stratum_retained"].values())) > 1
 
     if with_response:
         rec["response_truncation"] = response_truncation(tokenizer, rows, RESPONSE_TRUNC_CAPS)
@@ -108,23 +109,24 @@ def main():
     tokenizer = load_tokenizer(cfg["base_model"])
 
     specs = [
-        # name, path, with_strata(kept for clarity), with_response
-        ("dpo_standard_train", cfg["paths"]["dpo_standard_train"], False, True),
-        ("dpo_standard_eval", cfg["paths"]["dpo_standard_eval"], False, False),
-        ("dpo_length_balanced_train", cfg["paths"]["dpo_length_train"], True, True),
-        ("dpo_length_stratified_eval", cfg["paths"]["dpo_length_eval"], True, False),
+        # name, path, with_response
+        ("dpo_standard_train", cfg["paths"]["dpo_standard_train"], True),
+        ("dpo_standard_eval", cfg["paths"]["dpo_standard_eval"], False),
+        ("dpo_length_balanced_train", cfg["paths"]["dpo_length_train"], True),
+        ("dpo_length_stratified_eval", cfg["paths"]["dpo_length_eval"], False),
     ]
     report = {"max_length": max_length, "config": args.config, "datasets": []}
-    for name, path, with_strata, with_response in specs:
-        rec = analyze(name, repo_path(path), tokenizer, max_length, with_strata, with_response)
+    for name, path, with_response in specs:
+        rec = analyze(name, repo_path(path), tokenizer, max_length, with_response)
         report["datasets"].append(rec)
         print(f"\n=== {name} ===")
         print(f"  total={rec['total']}  over(>= {max_length})={rec['over_count']}  ({100*rec['over_fraction']:.2f}%)")
         print(f"  prompt_len: median={rec['prompt_len_median']:.0f} p95={rec['prompt_len_p95']:.0f} "
               f"p99={rec['prompt_len_p99']:.0f} max={rec['prompt_len_max']}")
         print(f"  over at caps: {rec['over_at_cap']}")
-        print(f"  stratum_key: {rec['stratum_key']}")
-        print(f"  per-stratum retained: {rec['per_stratum_retained']}  (uneven={rec['strata_retained_uneven']})")
+        if rec.get("stratum_key"):
+            print(f"  stratum_key: {rec['stratum_key']}")
+            print(f"  per-stratum retained: {rec['per_stratum_retained']}  (uneven={rec['strata_retained_uneven']})")
         if with_response:
             for cap, r in rec["response_truncation"].items():
                 print(f"  response truncated @cap {cap}: either={r['either_truncated']}/{r['considered']} "

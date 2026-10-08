@@ -161,6 +161,11 @@ def run_training(
     summary_path = results_dir / f"{run_name}_summary.json"
     state_path = out / "train_state.pt"
 
+    # Fresh (non-resume) start: rotate the train log so a rerun never mixes stale
+    # rows with live ones. On --resume we keep appending to the existing log.
+    if not resume and log_path.exists():
+        log_path.unlink()
+
     scaler = make_grad_scaler(cfg)
 
     microbatches_per_epoch = math.ceil(len(bundle["rows"]) / batch_size)
@@ -203,8 +208,7 @@ def run_training(
 
     micro = 0
     accum_count = 0
-    accum_loss = 0.0
-    last_metrics = None
+    window = _new_window()
     optimizer.zero_grad(set_to_none=True)
 
     for _epoch in range(epochs):
@@ -223,7 +227,6 @@ def run_training(
                 rr = sequence_logprobs(model, rb, cfg)[0]
 
             loss, metrics = dpo_loss(pc, pr, rc, rr, beta)
-            last_metrics = metrics
 
             if not torch.isfinite(loss):
                 append_jsonl(log_path, {
@@ -234,17 +237,18 @@ def run_training(
                 continue
 
             scaler.scale(loss / accum).backward()
-            accum_loss += float(loss.detach())
+            n = int(pc.shape[0])
+            _accumulate_window(window, loss, metrics, n)  # example-weighted across the window
             accum_count += 1
-            seen += cb["input_ids"].shape[0]
+            seen += n
             micro += 1
 
             if accum_count == accum:
                 opt_step = _optimizer_step(
                     model, optimizer, scaler, max_norm, log_path, run_name,
-                    opt_step, micro, seen, accum_loss / accum_count, last_metrics, timer,
+                    opt_step, micro, seen, window, timer,
                 )
-                accum_count, accum_loss = 0, 0.0
+                accum_count, window = 0, _new_window()
                 if opt_step % ckpt_every == 0:
                     _save_train_state(state_path, model, optimizer, scaler, micro, opt_step, seen)
                     model.save_pretrained(str(out))
@@ -253,7 +257,7 @@ def run_training(
     if accum_count > 0:
         opt_step = _optimizer_step(
             model, optimizer, scaler, max_norm, log_path, run_name,
-            opt_step, micro, seen, accum_loss / accum_count, last_metrics, timer,
+            opt_step, micro, seen, window, timer,
         )
 
     _save_train_state(state_path, model, optimizer, scaler, micro, opt_step, seen)
@@ -271,9 +275,25 @@ def run_training(
     return summary
 
 
-def _optimizer_step(model, optimizer, scaler, max_norm, log_path, run_name, opt_step, micro, seen, mean_loss, metrics, timer):
-    """Unscale -> clip -> (scaler) step. Logs grad_norm every step; non-finite grads
-    are logged and the poisoned update is skipped by the scaler, not applied."""
+def _new_window():
+    return {"examples": 0, "loss": 0.0, "logit_mean": 0.0, "policy_margin_mean": 0.0, "preference_accuracy": 0.0}
+
+
+def _accumulate_window(w, loss, metrics, n):
+    """Accumulate example-weighted sums over an accumulation window. dpo_loss returns
+    per-micro-batch MEANS, so weight each by its example count n to recover the true
+    window average (not the last-micro-batch value)."""
+    w["examples"] += n
+    w["loss"] += float(loss.detach()) * n
+    w["logit_mean"] += float(metrics["logit_mean"]) * n
+    w["policy_margin_mean"] += float(metrics["policy_margin_mean"]) * n
+    w["preference_accuracy"] += float(metrics["preference_accuracy"]) * n
+
+
+def _optimizer_step(model, optimizer, scaler, max_norm, log_path, run_name, opt_step, micro, seen, window, timer):
+    """Unscale -> clip -> (scaler) step. Logs grad_norm and the example-weighted
+    window-average metrics every step; non-finite grads are logged and the poisoned
+    update is skipped by the scaler, not applied."""
     scaler.unscale_(optimizer)
     grad_norm = torch.nn.utils.clip_grad_norm_(trainable_parameters(model), max_norm)
     found_inf = not bool(torch.isfinite(grad_norm))
@@ -282,21 +302,22 @@ def _optimizer_step(model, optimizer, scaler, max_norm, log_path, run_name, opt_
     scaler.update()
     optimizer.zero_grad(set_to_none=True)
 
+    ex = max(window["examples"], 1)
     rec = {
         "run": run_name,
         "opt_step": opt_step,
         "micro_step": micro,
         "seen_examples": seen,
-        "loss": mean_loss,
+        "window_examples": window["examples"],
+        "loss": window["loss"] / ex,
+        "logit_mean": window["logit_mean"] / ex,
+        "policy_margin_mean": window["policy_margin_mean"] / ex,
+        "preference_accuracy": window["preference_accuracy"] / ex,
         "grad_norm": float(grad_norm),
         "lr": optimizer.param_groups[0]["lr"],
         "scale": float(scaler.get_scale()),
         "wall_s": timer(),
     }
-    if metrics is not None:
-        rec["logit_mean"] = float(metrics["logit_mean"])
-        rec["policy_margin_mean"] = float(metrics["policy_margin_mean"])
-        rec["preference_accuracy"] = float(metrics["preference_accuracy"])
     if found_inf:
         rec["event"] = "nonfinite_grad"  # update skipped by GradScaler; weights unchanged
         append_jsonl(log_path, rec)

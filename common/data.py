@@ -169,22 +169,6 @@ def detect_stratum_key(rows: list[dict]) -> str | None:
     return None
 
 
-def derived_stratum(row: dict) -> str:
-    from common.metrics import word_count
-
-    yc, yr = preference_responses(row)
-    c, r = word_count(yc), word_count(yr)
-    if c > r:
-        return "preferred_longer"
-    if c < r:
-        return "rejected_longer"
-    return "matched"
-
-
-def row_stratum(row: dict, stratum_key: str | None) -> str:
-    return str(row[stratum_key]) if stratum_key else derived_stratum(row)
-
-
 def prompt_token_length(tokenizer, row: dict) -> int:
     msgs = prompt_messages_from_preference(row)
     return len(tokenizer.apply_chat_template(msgs, tokenize=True, add_generation_prompt=True))
@@ -195,17 +179,21 @@ def filter_overlength_prompts(rows: list[dict], tokenizer, max_length: int):
     shuffle). Drops rows whose rendered prompt has >= max_length tokens -- the exact
     condition that raises in encode_prompt_response (common/data.py). Never filters
     on response length, so it cannot un-balance a length-stratified dataset. Order
-    is preserved. Returns (kept_rows, report) with retained/dropped indices and
-    per-stratum counts (explicit stratum field if present, else derived)."""
+    is preserved. Returns (kept_rows, report) with retained/dropped indices; a
+    per-stratum breakdown is included ONLY when the dataset has a real stratum
+    field (length_stratum etc.) -- never derived/guessed."""
     skey = detect_stratum_key(rows)
     kept_rows, kept_idx, dropped_idx = [], [], []
     per_total, per_dropped = {}, {}
     for i, row in enumerate(rows):
-        s = row_stratum(row, skey)
-        per_total[s] = per_total.get(s, 0) + 1
-        if prompt_token_length(tokenizer, row) >= int(max_length):
+        over = prompt_token_length(tokenizer, row) >= int(max_length)
+        if skey:
+            s = str(row[skey])
+            per_total[s] = per_total.get(s, 0) + 1
+            if over:
+                per_dropped[s] = per_dropped.get(s, 0) + 1
+        if over:
             dropped_idx.append(i)
-            per_dropped[s] = per_dropped.get(s, 0) + 1
         else:
             kept_rows.append(row)
             kept_idx.append(i)
@@ -215,13 +203,14 @@ def filter_overlength_prompts(rows: list[dict], tokenizer, max_length: int):
         "kept": len(kept_idx),
         "dropped": len(dropped_idx),
         "dropped_fraction": (len(dropped_idx) / len(rows)) if rows else 0.0,
-        "stratum_key": skey if skey else "(derived from response word counts)",
-        "per_stratum_total": per_total,
-        "per_stratum_dropped": {s: per_dropped.get(s, 0) for s in per_total},
-        "per_stratum_retained": {s: per_total[s] - per_dropped.get(s, 0) for s in per_total},
+        "stratum_key": skey,
         "kept_idx": kept_idx,
         "dropped_idx": dropped_idx,
     }
+    if skey:
+        report["per_stratum_total"] = per_total
+        report["per_stratum_dropped"] = {s: per_dropped.get(s, 0) for s in per_total}
+        report["per_stratum_retained"] = {s: per_total[s] - per_dropped.get(s, 0) for s in per_total}
     return kept_rows, report
 
 
