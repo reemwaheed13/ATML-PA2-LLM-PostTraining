@@ -48,6 +48,9 @@ def stratified_preference(policy, tokenizer, rows, cfg):
         for j, row in enumerate(chunk):
             recs.append({
                 "idx": start + j,
+                # Stable data index so standard/balanced pairs join on identity, not
+                # row position, and qualitative picks trace back to the source row.
+                "source_index": row.get("source_index", start + j),
                 "stratum": str(row[skey]) if skey else None,
                 "m_theta": float(m[j]),
             })
@@ -55,11 +58,14 @@ def stratified_preference(policy, tokenizer, rows, cfg):
     by = {}
     for r in recs:
         by.setdefault(r["stratum"], []).append(r["m_theta"])
+    # Accuracy is strictly m_theta > 0: exact-zero margins are failures, not dropped.
+    # n_zero_margin surfaces any tie per stratum (and overall) instead of hiding it.
     per_stratum = {
         s: {
             "n": len(v),
             "preference_accuracy": float(np.mean([x > 0 for x in v])),
             "mean_m_theta": float(np.mean(v)),
+            "n_zero_margin": int(sum(1 for x in v if x == 0.0)),
         }
         for s, v in sorted(by.items(), key=lambda kv: str(kv[0]))
     }
@@ -67,6 +73,7 @@ def stratified_preference(policy, tokenizer, rows, cfg):
         "n": len(recs),
         "preference_accuracy": float(np.mean([r["m_theta"] > 0 for r in recs])),
         "mean_m_theta": float(np.mean([r["m_theta"] for r in recs])),
+        "n_zero_margin": int(sum(1 for r in recs if r["m_theta"] == 0.0)),
     }
     return {"stratum_key": skey, "overall": overall, "per_stratum": per_stratum}, recs
 

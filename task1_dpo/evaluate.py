@@ -87,6 +87,9 @@ def _teacher_forced_pass(policy, tokenizer, rows, cfg, beta, pairs_path):
         "held_out_dpo_loss": float(loss),
         "preference_accuracy": float((m_all > 0).float().mean()),
         "mean_preference_margin": float(m_all.mean()),
+        # Accuracy is strictly m_theta > 0, so exact-zero margins are counted as
+        # failures (not dropped). Surface the count so a silent tie is visible.
+        "n_zero_margin": int((m_all == 0).sum()),
     }, pair_records
 
 
@@ -223,6 +226,11 @@ def run_evaluation(config_path, adapter, name="standard", beta=None, max_example
             "samples_per_prompt": 1,
         },
         "precision": "base_fp16+lora_fp32_peft_native+autocast_fp16+gradscaler",
+        # Fixed KL averaging convention, recorded so all Task 1 conditions visibly
+        # match rather than matching by assumption. kl_sampled = sum over prompts of
+        # sum_t(logp_policy - logp_ref) on response tokens, divided by total response
+        # tokens -> a single per-token mean KL (token-level, not sequence-level).
+        "kl_convention": "sampled_per_token_mean(sum_tokens/sum_response_tokens)",
         "wall_seconds": wall_seconds,
         "sec_per_generation": (wall_seconds / gen_metrics["num_generations"]) if gen_metrics["num_generations"] else None,
         "qualitative_candidates": _qualitative_candidates(gen_recs, pair_recs),
