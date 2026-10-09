@@ -217,14 +217,21 @@ python -m task2_ppo.evaluate --config configs/ppo.yaml --adapter outputs/task2_p
 python -m task2_ppo.evaluate --config configs/ppo.yaml --adapter outputs/task2_ppo/fork_eps0.20_kl0.00 --name fork_eps0.20_kl0.00
 python -m task2_ppo.evaluate --config configs/ppo.yaml --adapter outputs/task2_ppo/fork_eps0.20_kl0.20 --name fork_eps0.20_kl0.20
 
-# Aggregation + standard-trajectory figure + qualitative candidates (CPU, pure read)
+# Report artifacts: tables + figures in one run (CPU, pure read). aggregate_task2 also
+#   (re)generates the figures unless --tables-only is passed; plot_task2 is the standalone
+#   figures-only entry point. reward-vs-KL needs the six fork *_eval.json files above.
 python -m scripts.aggregate_task2 --config configs/ppo.yaml --name standard
-python -m scripts.plot_task2 --config configs/ppo.yaml --name standard
+#   tables only, no figure regeneration:
+#   python -m scripts.aggregate_task2 --config configs/ppo.yaml --name standard --tables-only
+#   figures only (standalone):
+#   python -m scripts.plot_task2 --config configs/ppo.yaml --name standard
 python -m scripts.dump_task2_qualitative --config configs/ppo.yaml --name standard
 ```
 
+`aggregate_task2.py` writes `task2_standard_summary.csv` (one-row continuation summary: updates, wall-clock, peak VRAM, first/last reward·KL·entropy·length, mean clip fraction, count of GradScaler-skipped updates), `task2_continuation.csv` (per-update trajectory), `task2_clip_table.csv` (cached clip/affected fraction + clipped surrogate joined to each eps fork's held-out reward/KL/length and `policy_loss_std_over_updates`), `task2_kl_table.csv` (per-beta held-out reward/KL/entropy/length, with `shared_with_clip_study` flagging the reused `eps=0.20, β=0.10` fork), and `task2_summary.json`. When the cache lacked advantages, `cached_affected_frac` is written as `NA` with a `cached_affected_note` naming why — never dropped, since it is Required Evidence. Figures: `task2_standard_trajectory.png`, `task2_standard_diagnostics.png`, `task2_reward_vs_kl.png` (reward-vs-KL drift/gain trade-off across the eps and beta forks).
+
 `dump_task2_qualitative.py` reads `<name>_generations.jsonl` and emits `<name>_qualitative.json`: every held-out case with z-scored reward, z-scored length, and their difference (`disagreement`), carrying `source_index`. Nothing is thresholded or pre-selected — the author picks the reward-and-quality-agree and reward-and-quality-disagree cases by hand. (Run it for any policy by passing its `--name`, e.g. a fork name, not just `standard`.)
 
-The clipping study reports both the cached-rollout `clip_fraction`/`affected_token_fraction` per epsilon (`clip_cached.json`) and the matched-fork held-out reward/KL/response-length plus the stability statistic `policy_loss_std_over_updates` (`task2_clip_table.csv`); the KL study reports held-out reward/KL/entropy/response-length per beta (`task2_kl_table.csv`). The standard continuation trajectories (reward, KL, policy/value loss, entropy, clip fraction, gradient norm, response length) are in `standard_train.jsonl` and `task2_continuation.csv`, with peak VRAM and wall-clock in `standard_summary.json`. Every output records the KL convention string `sampled_per_token_mean(sum_tokens/sum_response_tokens)`, matching Task 1.
+Every table/summary output records the KL convention string `sampled_per_token_mean(sum_tokens/sum_response_tokens)` where KL is reported, matching Task 1. Standard-continuation peak VRAM and wall-clock live in `standard_summary.json` and `task2_standard_summary.csv`.
 
 Code attribution: portions of the Task 2 training/evaluation/ablation code were implemented with coding assistance from an LLM (Anthropic Claude); all submitted code was reviewed, tested, and is understood by the author, who is responsible for every line. The PDF report is written entirely by the author without AI assistance (see §9).
