@@ -52,7 +52,11 @@ def batch_generate(
     if do_sample:
         kwargs.update({"temperature": temperature, "top_p": top_p})
 
-    with torch.inference_mode():
+    # no_grad, NOT inference_mode: `seq` (and its view `response_ids`) are reused as the
+    # input_ids / gather-index of the grad-tracked PPO/GRPO update forward. Inference-mode
+    # tensors cannot be saved for backward, so torch.gather in response_token_logprobs would
+    # raise "Inference tensors cannot be saved for backward". no_grad is numerically identical.
+    with torch.no_grad():
         seq = model.generate(**enc, **kwargs)
     if was_training:
         model.train()
