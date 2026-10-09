@@ -1,0 +1,3 @@
+run,compliance_rate,n_with_limit,length_mean,length_std
+standard,0.4,10,47.9,22.119900542271882
+length_balanced,0.6,10,39.1,14.754321400864223

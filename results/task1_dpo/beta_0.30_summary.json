@@ -1,0 +1,8 @@
+{
+  "run_name": "beta_0.30",
+  "output": "/content/ATML-PA2-LLM-PostTraining/outputs/task1_dpo/beta_0.30",
+  "opt_steps": 36,
+  "seen_examples": 600,
+  "wall_seconds": 303.1977126189995,
+  "peak_vram_gb": 9.881997824
+}

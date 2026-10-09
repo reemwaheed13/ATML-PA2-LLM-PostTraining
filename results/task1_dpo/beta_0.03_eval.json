@@ -1,0 +1,55 @@
+{
+  "name": "beta_0.03",
+  "adapter": "outputs/task1_dpo/beta_0.03",
+  "beta": 0.1,
+  "seed": 6304,
+  "num_pairs": 297,
+  "held_out_dpo_loss": 0.686847984790802,
+  "preference_accuracy": 0.6026936173439026,
+  "mean_preference_margin": 0.13618317246437073,
+  "n_zero_margin": 0,
+  "num_generations": 297,
+  "reward_mean": 1.2011442344999474,
+  "reward_std": 1.4333556436103192,
+  "length_mean": 157.11784511784512,
+  "length_std": 103.93142124152065,
+  "length_iqr": 214.0,
+  "truncated_fraction": 0.4444444444444444,
+  "eos_fraction": 0.5555555555555556,
+  "kl_sampled": -0.00022700520861806796,
+  "decoding": {
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "do_sample": true,
+    "max_new_tokens": 256,
+    "max_prompt_length": 1152,
+    "samples_per_prompt": 1
+  },
+  "precision": "base_fp16+lora_fp32_peft_native+autocast_fp16+gradscaler",
+  "kl_convention": "sampled_per_token_mean(sum_tokens/sum_response_tokens)",
+  "wall_seconds": 650.8195303679995,
+  "sec_per_generation": 2.1913115500606044,
+  "qualitative_candidates": {
+    "high_reward_idx": [
+      161,
+      22,
+      54,
+      58,
+      296
+    ],
+    "short_but_rewarded_idx": [
+      81,
+      157,
+      264,
+      4,
+      69
+    ],
+    "high_pref_margin_idx": [
+      274,
+      47,
+      115,
+      5,
+      186
+    ]
+  }
+}

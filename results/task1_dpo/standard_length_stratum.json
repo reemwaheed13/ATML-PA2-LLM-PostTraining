@@ -1,0 +1,29 @@
+{
+  "stratum_key": "length_stratum",
+  "overall": {
+    "n": 246,
+    "preference_accuracy": 0.5813008130081301,
+    "mean_m_theta": 0.27812107622138854,
+    "n_zero_margin": 0
+  },
+  "per_stratum": {
+    "length_matched": {
+      "n": 82,
+      "preference_accuracy": 0.5853658536585366,
+      "mean_m_theta": 0.1941137292036196,
+      "n_zero_margin": 0
+    },
+    "preferred_longer": {
+      "n": 82,
+      "preference_accuracy": 0.4634146341463415,
+      "mean_m_theta": -0.07358911560802925,
+      "n_zero_margin": 0
+    },
+    "rejected_longer": {
+      "n": 82,
+      "preference_accuracy": 0.6951219512195121,
+      "mean_m_theta": 0.7138386150685753,
+      "n_zero_margin": 0
+    }
+  }
+}

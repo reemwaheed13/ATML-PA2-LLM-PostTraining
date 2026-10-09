@@ -1,0 +1,8 @@
+{
+  "run_name": "length_balanced",
+  "output": "/content/ATML-PA2-LLM-PostTraining/outputs/task1_dpo/length_balanced",
+  "opt_steps": 92,
+  "seen_examples": 1489,
+  "wall_seconds": 632.8240918399997,
+  "peak_vram_gb": 9.877605888
+}
