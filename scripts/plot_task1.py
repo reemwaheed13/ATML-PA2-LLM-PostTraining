@@ -1,9 +1,16 @@
 """Task 1 standard-run trajectory figure.
 
-Plots loss and preference accuracy against seen_examples (not opt_step). Excludes
-GradScaler-discarded updates (records carrying an "event" field) and the trailing
-partial accumulation window (window_examples != the full effective batch). Reference
+Plots loss and preference accuracy against seen_examples (not opt_step). Reference
 lines at 0.693 (log 2) and 0.5. Saves to report/figures/.
+
+Exclusion rule (deliberate): a record belongs on the curve iff it carries a FULL
+accumulation window (window_examples == effective batch) with finite loss and
+accuracy -- i.e. metrics measured on a full batch of real examples at a real model
+state. This KEEPS the nonfinite_grad record (standard run, opt_step 58): the
+GradScaler discarded that gradient, but its loss/accuracy were still measured on 16
+real examples and, indexed on seen_examples (944), it is a legitimate point distinct
+from the re-used opt_step 58 at seen_examples 960. It DROPS the trailing partial
+window and nonfinite_loss records, which carry no valid window metrics.
 
 Run:  python -m scripts.plot_task1 --config configs/dpo.yaml --name standard
 """
@@ -34,12 +41,25 @@ def main():
     meta_p = results_dir / f"{args.name}_meta.json"
     full_window = int(load_json(meta_p).get("effective_batch")) if meta_p.exists() else None
 
-    # Clean optimizer steps only: drop event rows (e.g. nonfinite_grad) and the
-    # trailing partial window (window_examples below the full effective batch).
-    clean = [r for r in rows if "event" not in r]
+    # Keep every record whose metrics were measured on a FULL accumulation window,
+    # regardless of whether its gradient step was later discarded. This retains the
+    # nonfinite_grad window (real loss/accuracy at a real model state, distinct
+    # seen_examples) and drops the trailing partial window + metric-less
+    # nonfinite_loss rows (whose loss is a string, not a number).
     if full_window is None:
-        full_window = max((r.get("window_examples", 0) for r in clean), default=0)
-    clean = [r for r in clean if r.get("window_examples") == full_window]
+        full_window = max(
+            (r["window_examples"] for r in rows if isinstance(r.get("window_examples"), int)),
+            default=0,
+        )
+
+    def _plottable(r):
+        return (
+            r.get("window_examples") == full_window
+            and isinstance(r.get("loss"), (int, float))
+            and isinstance(r.get("preference_accuracy"), (int, float))
+        )
+
+    clean = [r for r in rows if _plottable(r)]
 
     x = [r["seen_examples"] for r in clean]
     loss = [r["loss"] for r in clean]
@@ -50,7 +70,7 @@ def main():
     ax1.axhline(LOG2, color="gray", linestyle="--", linewidth=1, label="log 2 = 0.693")
     ax1.set_ylabel("held-in DPO loss")
     ax1.legend(loc="best")
-    ax1.set_title(f"Task 1 DPO training trajectory ({args.name}, excl. {len(rows) - len(clean)} non-step rows)")
+    ax1.set_title(f"Task 1 DPO training trajectory ({args.name}, excl. {len(rows) - len(clean)} partial/invalid rows)")
 
     ax2.plot(x, pref, color="tab:green")
     ax2.axhline(0.5, color="gray", linestyle="--", linewidth=1, label="chance = 0.5")
