@@ -32,22 +32,20 @@ PRECISION = "base_fp16+lora_fp32_peft_native+autocast_fp16+gradscaler"
 
 
 def _report_trainable_dtypes(model, label):
-    """DIAGNOSTIC (temporary): print every trainable parameter's name+dtype and the
-    fp16/fp32 counts, so the GradScaler fp16-gradient failure is diagnosed by measurement
-    rather than assumption. Remove once the precision path is fixed and documented."""
+    """Summary of trainable-parameter dtypes (counts + dtype histogram) at load time -- a
+    cheap one-line sanity check, not the 200-line per-tensor dump. The hard guard is the
+    fp32 assertion inside common.models load_policy/load_value_model."""
     from collections import Counter
 
     counts = Counter()
     n = 0
-    print(f"[dtype-report] {label}: trainable parameters")
-    for name, p in model.named_parameters():
+    for _, p in model.named_parameters():
         if p.requires_grad:
             n += 1
             counts[str(p.dtype)] += 1
-            print(f"    {name}: {p.dtype}")
     fp16 = counts.get("torch.float16", 0)
     fp32 = counts.get("torch.float32", 0)
-    print(f"[dtype-report] {label}: {n} trainable tensors | fp16={fp16} fp32={fp32} "
+    print(f"[dtype-report] {label}: {n} trainable | fp16={fp16} fp32={fp32} "
           f"other={n - fp16 - fp32} | dtypes={dict(counts)}")
 
 
@@ -69,10 +67,8 @@ def prepare_ppo_continuation(config_path: str):
     reward_model, reward_tokenizer = load_reward_model(cfg)
     prompts = read_jsonl(cfg["paths"]["rl_prompt_train"])
 
-    # DIAGNOSTIC (temporary): measure trainable-parameter dtypes for both models before
-    # any training. GradScaler.unscale_ raises on fp16 grads, so any fp16 trainable param
-    # breaks the fp32-master-weights path. Measured, not inferred (the value model loads
-    # via AutoModelForSequenceClassification, a different path than the policy adapter).
+    # One-line trainable-dtype summary for both models. The hard guard is the fp32 assertion
+    # inside common.models (load_policy / load_value_model); this just surfaces the counts.
     _report_trainable_dtypes(policy, "policy")
     _report_trainable_dtypes(value_model, "value_model")
 

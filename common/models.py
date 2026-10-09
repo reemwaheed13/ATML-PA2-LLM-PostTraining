@@ -92,6 +92,10 @@ def load_policy(cfg: dict, adapter_path: str | None = None, trainable: bool = Fa
                 model.gradient_checkpointing_enable()
         if hasattr(model, "enable_input_require_grads"):
             model.enable_input_require_grads()
+        # PEFT keeps the LoRA adapter fp32 here (measured: all trainable params fp32). Guard
+        # it: a future load that silently produces an fp16 trainable param must fail now, not
+        # at the first GradScaler.unscale_. No cast -- the policy is expected to be fp32 already.
+        _assert_trainable_fp32(model, "policy")
     else:
         model.eval()
     return model
@@ -149,6 +153,31 @@ def load_reward_model(cfg: dict):
     return model, tok
 
 
+def _cast_trainable_to_fp32(model) -> int:
+    """Cast every trainable parameter that is not fp32 to fp32, in place. Frozen params
+    (e.g. the fp16 base) are untouched. Returns the number of tensors cast. GradScaler
+    unscales gradients in place before the optimizer step and refuses fp16 gradients, so
+    all trainable params must be fp32 master weights."""
+    n = 0
+    for p in model.parameters():
+        if p.requires_grad and p.dtype != torch.float32:
+            p.data = p.data.float()
+            n += 1
+    return n
+
+
+def _assert_trainable_fp32(model, label: str) -> None:
+    """Fail loudly at load time if any trainable parameter is non-fp32, instead of deep in
+    the first GradScaler.unscale_ call."""
+    bad = [(name, str(p.dtype)) for name, p in model.named_parameters()
+           if p.requires_grad and p.dtype != torch.float32]
+    if bad:
+        raise RuntimeError(
+            f"{label}: {len(bad)} trainable parameter(s) are not fp32, which GradScaler "
+            f"cannot unscale (it needs fp32 master weights). First few: {bad[:5]}"
+        )
+
+
 def load_value_model(cfg: dict, checkpoint: str, train_mode: str = "lora_head"):
     dtype = resolve_dtype(cfg.get("dtype", "float16"))
     model = AutoModelForSequenceClassification.from_pretrained(
@@ -184,6 +213,12 @@ def load_value_model(cfg: dict, checkpoint: str, train_mode: str = "lora_head"):
     if torch.cuda.is_available():
         model = model.cuda()
     model.train()
+    # The value head is trained via PEFT modules_to_save, i.e. a COPY of the fp16 base
+    # score head, so it arrives fp16 while the LoRA adapters are fp32. Cast all trainable
+    # params to fp32 (general, not hardcoded to 'score') so GradScaler can unscale them;
+    # the frozen fp16 base is left alone. Measured: see README section 7.
+    _cast_trainable_to_fp32(model)
+    _assert_trainable_fp32(model, "value_model")
     return model
 
 
