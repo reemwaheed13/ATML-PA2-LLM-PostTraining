@@ -29,6 +29,10 @@ eval_max_response_length: 768
 reward_max_length: 1280
 max_grad_norm: 1.0
 
+# Held-out eval decoding. Greedy (no default in code: evaluate.py fails loudly if unset),
+# shared convention with Task 3 so KL/length stay comparable for the cross-task synthesis.
+eval_do_sample: false
+
 output: outputs/task2_ppo/standard
 results_dir: results/task2_ppo
 cached_rollouts: cached/ppo_rollout.pt
