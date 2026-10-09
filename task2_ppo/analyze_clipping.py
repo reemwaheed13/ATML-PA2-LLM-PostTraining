@@ -65,19 +65,158 @@ def _as1d_long(x):
     return torch.tensor(np.asarray(x).flatten(), dtype=torch.long)
 
 
-def _resolve_prompt(row, prompt_pool):
-    p = row.get("prompt")
-    if isinstance(p, list) and p:
-        return p
-    if isinstance(p, str) and p:
-        return [{"role": "user", "content": p}]
-    src = row.get("source_index")
-    if src in prompt_pool:
-        return prompt_pool[src]
-    raise ValueError(f"cannot resolve prompt for row source_index={src!r}")
+# ----------------------------- prompt resolution ----------------------------
+# The cached rollout rows index into a prompt pool by source_index, but the staff cache
+# does not record WHICH pool (train vs eval) nor guarantee that source_index is the pool's
+# own id field -- it may be a positional index, or the pool may expose a differently named
+# id. Resolution is therefore adaptive: try the configured (train) pool, then eval, each by
+# every id-like field the pool actually exposes, then by positional index. The winning
+# strategy is logged into clip_cached.json so the report can state how prompts were matched.
+_INLINE_PROMPT_KEYS = ("prompt", "messages", "prompt_messages", "query", "question", "prompt_text")
+_ID_FIELD_CANDIDATES = ("source_index", "id", "prompt_id", "idx", "index", "uid", "example_id", "qid", "sample_index")
 
 
-def _reconstruct(row, tokenizer, prompt_pool):
+def _canon_id(v):
+    """Canonicalize an id/index so int 124, float 124.0 and str '124' all compare equal."""
+    if isinstance(v, bool):
+        return v
+    if isinstance(v, int):
+        return v
+    if isinstance(v, float) and float(v).is_integer():
+        return int(v)
+    if isinstance(v, str) and v.strip().lstrip("-").isdigit():
+        return int(v.strip())
+    return v
+
+
+def _inline_prompt(row):
+    """Return (messages, key) if the row carries its prompt text inline, else (None, None)."""
+    for k in _INLINE_PROMPT_KEYS:
+        v = row.get(k)
+        if isinstance(v, list) and v:
+            return v, k
+        if isinstance(v, str) and v.strip():
+            return [{"role": "user", "content": v}], k
+    return None, None
+
+
+def _needs_prompt(row):
+    """True iff _reconstruct would fall through to the text path (no cached token ids),
+    i.e. the only branch that needs a resolved prompt."""
+    if _first_present(row, _SEQ_KEYS) and _first_present(row, _PW_KEYS):
+        return False
+    if _first_present(row, _RESP_ID_KEYS) and _first_present(row, _PROMPT_ID_KEYS):
+        return False
+    return True
+
+
+def _pool_lookup_maps(pool_rows):
+    """For one pool: {strategy_suffix: {canon_id: messages}} -- one map per scalar id-like
+    field present on ALL rows, plus a positional map. Keys are canonicalized for matching."""
+    maps = {}
+    for key in _ID_FIELD_CANDIDATES:
+        if all(isinstance(r, dict) and key in r for r in pool_rows):
+            maps[f"field:{key}"] = {_canon_id(r[key]): prompt_messages(r) for r in pool_rows}
+    maps["positional"] = {i: prompt_messages(r) for i, r in enumerate(pool_rows)}
+    return maps
+
+
+def _resolution_diagnostics(cache_rows, pool_specs, needed, chosen_name):
+    """Human-readable dump carrying everything needed to debug a resolution failure:
+    which pools were loaded + their sizes, the cache row key set, the first source_index
+    values in the cache, and the id field names/values the pools actually expose."""
+    bar = "!" * 78
+    first_src = [cache_rows[i].get("source_index") for i in range(min(8, len(cache_rows)))]
+    lines = [
+        bar,
+        "PROMPT RESOLUTION FAILED (Task 2 cached clipping study).",
+        f"chosen pool strategy: {chosen_name!r} (None => no strategy covered every needed id)",
+        f"cache rows: {len(cache_rows)}; rows needing a pool (no token ids, no inline prompt): {len(needed)}",
+        f"first source_index values in cache: {first_src}",
+        f"full key set of cache row 0: {sorted(cache_rows[0].keys())}",
+        f"canonical ids needed but unresolved: {sorted(list(needed))[:12]}"
+        + (" ..." if len(needed) > 12 else ""),
+    ]
+    for label, path, rows in pool_specs:
+        if rows is None:
+            lines.append(f"pool[{label}] {path}: MISSING (file not found)")
+            continue
+        idf = [k for k in _ID_FIELD_CANDIDATES if all(isinstance(r, dict) and k in r for r in rows)]
+        samples = {k: [rows[i].get(k) for i in range(min(5, len(rows)))] for k in idf}
+        lines.append(f"pool[{label}] {path}: {len(rows)} rows; positional ids 0..{len(rows) - 1}")
+        lines.append(f"    id-like fields present on all rows: {idf}")
+        lines.append(f"    sample id values: {samples}")
+        lines.append(f"    pool row 0 keys: {sorted(rows[0].keys())}")
+    lines.append("strategies tried (in order): configured(train) then eval pool, each by every")
+    lines.append("id field above, then positional indexing. Inline prompt on the cache row wins first.")
+    lines.append(bar)
+    return "\n".join(lines)
+
+
+def _build_prompt_resolver(cfg, cache_rows):
+    """Return (resolve_fn, pool_strategy). resolve_fn(row) -> (messages, strategy_str).
+
+    Picks ONE pool strategy that resolves every row that needs a pool, preferring the
+    configured train pool, its source_index field first. Raises a rich diagnostic early
+    (before the policy is loaded) when no strategy covers the needed ids."""
+    # Which cache rows actually require a pooled prompt (text reconstruction path, no inline)?
+    needed = set()
+    for row in cache_rows:
+        if _needs_prompt(row) and _inline_prompt(row)[0] is None:
+            needed.add(_canon_id(row.get("source_index")))
+
+    # Nothing to resolve from a pool (all rows carry token ids or inline prompts): skip pool IO.
+    if not needed:
+        def resolve_inline_only(row):
+            msgs, key = _inline_prompt(row)
+            if msgs is not None:
+                return msgs, f"inline:{key}"
+            raise ValueError("internal: row unexpectedly needs a pooled prompt")
+        return resolve_inline_only, None
+
+    # Load the configured pool first, then the other one.
+    pool_specs = []
+    for label, key in (("train", "rl_prompt_train"), ("eval", "rl_prompt_eval")):
+        path = cfg["paths"][key]
+        try:
+            rows = read_jsonl(path)
+        except FileNotFoundError:
+            rows = None
+        pool_specs.append((label, path, rows))
+
+    # Ordered candidate strategies: per pool, each id field (source_index first), then positional.
+    candidates = []  # (name, {canon_id: messages})
+    for label, _path, rows in pool_specs:
+        if not rows:
+            continue
+        maps = _pool_lookup_maps(rows)
+        ordered = [f"field:{k}" for k in _ID_FIELD_CANDIDATES if f"field:{k}" in maps] + ["positional"]
+        for suf in ordered:
+            candidates.append((f"{label}:{suf}", maps[suf]))
+
+    chosen_name, chosen_map = None, None
+    for name, m in candidates:
+        if needed.issubset(m.keys()):
+            chosen_name, chosen_map = name, m
+            break
+
+    if chosen_map is None:
+        raise ValueError(_resolution_diagnostics(cache_rows, pool_specs, needed, chosen_name))
+
+    def resolve(row):
+        msgs, key = _inline_prompt(row)
+        if msgs is not None:
+            return msgs, f"inline:{key}"
+        cid = _canon_id(row.get("source_index"))
+        if cid in chosen_map:
+            return chosen_map[cid], chosen_name
+        # Should not happen (chosen_map covers all needed), but fail loudly if it does.
+        raise ValueError(_resolution_diagnostics(cache_rows, pool_specs, {cid}, chosen_name))
+
+    return resolve, chosen_name
+
+
+def _reconstruct(row, tokenizer, resolve_prompt):
     """Return (sequence[1,L], attn[1,L], prompt_width, response_ids[1,G], source_str).
 
     Prefers exact cached token ids; falls back to re-encoding prompt+response text (which
@@ -101,7 +240,7 @@ def _reconstruct(row, tokenizer, prompt_pool):
         pw = int(pids.numel())
         source = f"cached:{prompt_id_k}+{resp_k}"
     else:
-        msgs = _resolve_prompt(row, prompt_pool)
+        msgs, pstrat = resolve_prompt(row)
         pids = torch.tensor(
             tokenizer.apply_chat_template(msgs, tokenize=True, add_generation_prompt=True),
             dtype=torch.long,
@@ -112,7 +251,7 @@ def _reconstruct(row, tokenizer, prompt_pool):
             resp = torch.tensor(tokenizer(str(row["response"]), add_special_tokens=False)["input_ids"], dtype=torch.long)
         seq = torch.cat([pids, resp])
         pw = int(pids.numel())
-        source = f"text:{'cached_resp_ids' if resp_k else 'retokenized'}"
+        source = f"text:{'cached_resp_ids' if resp_k else 'retokenized'}|prompt={pstrat}"
 
     attn = torch.ones_like(seq)
     return seq.unsqueeze(0), attn.unsqueeze(0), pw, resp.unsqueeze(0), source
@@ -157,19 +296,20 @@ def cached_clip_study(cfg, out_path):
     eps_values = [float(e) for e in cfg["clip_values"]]
     gamma, lam = float(cfg["gamma"]), float(cfg["gae_lambda"])
 
+    # Resolve prompts BEFORE loading the policy: a cache/pool mismatch should fail fast and
+    # cheap (and, with main() reordered, never after the GPU forks already ran).
+    resolve_prompt, pool_strategy = _build_prompt_resolver(cfg, rows)
+
     tokenizer = load_tokenizer(cfg["base_model"])
     policy = load_policy(cfg, adapter_path=cfg["paths"]["ppo_midpoint_policy"], trainable=False)
     device = next(policy.parameters()).device
-    prompt_pool = {}
-    for i, r in enumerate(read_jsonl(cfg["paths"]["rl_prompt_train"])):
-        prompt_pool[r.get("source_index", i)] = prompt_messages(r)
 
     ratios_all, adv_all, mask_all = [], [], []
     adv_sources, mask_sources, recon_sources = set(), set(), set()
     adv_available = True
 
     for row in rows:
-        seq, attn, pw, resp, recon_src = _reconstruct(row, tokenizer, prompt_pool)
+        seq, attn, pw, resp, recon_src = _reconstruct(row, tokenizer, resolve_prompt)
         recon_sources.add(recon_src)
         with torch.no_grad():
             new_logp = token_logprobs(policy, seq.to(device), attn.to(device), pw, resp.to(device), cfg)[0]
@@ -206,6 +346,7 @@ def cached_clip_study(cfg, out_path):
         "advantage_source": sorted(adv_sources),
         "mask_source": sorted(mask_sources),
         "reconstruction_source": sorted(recon_sources),
+        "prompt_resolution": {"pool_strategy": pool_strategy},
         "alignment": "per row: min(len(new_logp), len(old_logprobs)); ratio=exp(new-old)",
         "clip_epsilons": eps_values,
         "kl_convention": KL_CONVENTION,
@@ -260,16 +401,18 @@ def main():
     results_dir = repo_path(cfg["results_dir"])
     results_dir.mkdir(parents=True, exist_ok=True)
 
-    # (A) cached-rollout geometric study
-    cached_clip_study(cfg, results_dir / "clip_cached.json")
-
-    # (B) matched short forks: fixed kl_beta, sweep epsilon. The (eps=0.20, kl=0.10) fork
-    # is shared with ablate_kl and runs once (run_fork skips if already trained).
+    # (A) matched short forks FIRST -- this is the expensive GPU work. It must not be
+    # gated on the cached study: a cache/pool problem used to crash before the forks ran
+    # and cost all three. The (eps=0.20, kl=0.10) fork is shared with ablate_kl and runs
+    # once (run_fork skips if already trained).
     if not args.skip_forks:
         kl = float(cfg["kl_beta"])
         for eps in [float(e) for e in cfg["clip_values"]]:
             print(f"=== clip fork {fork_name(eps, kl)} (eps={eps}, kl={kl}, {cfg['fork_updates']} updates) ===")
             run_fork(args.config, eps, kl, resume=args.resume, force=args.force)
+
+    # (B) cached-rollout geometric study LAST -- cheap and cannot block the forks above.
+    cached_clip_study(cfg, results_dir / "clip_cached.json")
 
 
 if __name__ == "__main__":
