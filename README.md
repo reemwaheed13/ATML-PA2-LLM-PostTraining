@@ -237,3 +237,53 @@ python -m scripts.dump_task2_qualitative --config configs/ppo.yaml --name standa
 Every table/summary output records the KL convention string `sampled_per_token_mean(sum_tokens/sum_response_tokens)` where KL is reported, matching Task 1. Standard-continuation peak VRAM and wall-clock live in `standard_summary.json` and `task2_standard_summary.csv`.
 
 Code attribution: portions of the Task 2 training/evaluation/ablation code were implemented with coding assistance from an LLM (Anthropic Claude); all submitted code was reviewed, tested, and is understood by the author, who is responsible for every line. The PDF report is written entirely by the author without AI assistance (see §9).
+
+## 12. Task 3 run sequence (ordered)
+
+All runnable as `python -m ...` from the repo root; every run writes machine-readable output to `results/task3_grpo/`. GRPO is critic-free: a single trainable policy, a frozen reference (the same adapter with LoRA disabled), and the frozen reward model — no value model. GRPO continues from the supplied midpoint checkpoint, and **both normalization forks restart from that same midpoint**. Held-out eval is greedy (`eval_do_sample: false` in `configs/grpo.yaml`, the shared Task 2/3 convention); `evaluate.py` fails loudly if that key is unset. `continue_train.py` supports `--resume` (atomic `train_state.pt` for the policy + optimizer + scaler + RNG); the fork orchestrator skips any fork whose `<name>_summary.json` already exists.
+
+```bash
+# Validate the group-relative advantage objective (CPU, seconds) BEFORE any GPU run
+python -m scripts.verify_grpo_groups
+
+# Standard 20-update continuation (peak VRAM + wall-clock -> standard_summary.json).
+# Each update generates K=4 completions for one scheduled prompt, computes within-group
+# advantages, masks max-length completions from the loss, applies the clipped GRPO objective
+# with the k3 KL penalty, and logs reward / within-group reward std / uninformative-group
+# fraction / KL / entropy / clip fraction / grad norm / response length.
+python -m task3_grpo.continue_train --config configs/grpo.yaml --run-name standard
+
+# Group-size study: equal-generation regrouping of the supplied K=8 completion/reward cache
+# into K in {2,4,8}. No training, no model (CPU, seconds). Writes group_size_study.json +
+# task3_group_size[_by_difficulty].csv.
+python -m task3_grpo.analyze_group_size --config configs/grpo.yaml
+
+# Length-normalization study: two matched 8-update forks from the identical midpoint
+# (canonical GRPO vs Dr. GRPO), then the controlled length-conditioned gradient diagnostic
+# on the fixed K-cache. --diagnostic-only runs just the analytic part (no training).
+python -m task3_grpo.compare_normalization --config configs/grpo.yaml
+
+# Held-out evaluation (--name MUST match the adapter dir so results land in
+#   results/task3_grpo/<name>_eval.json): standard + the two normalization forks.
+python -m task3_grpo.evaluate --config configs/grpo.yaml --adapter outputs/task3_grpo/standard     --name standard
+python -m task3_grpo.evaluate --config configs/grpo.yaml --adapter outputs/task3_grpo/norm_grpo     --name norm_grpo
+python -m task3_grpo.evaluate --config configs/grpo.yaml --adapter outputs/task3_grpo/norm_dr_grpo  --name norm_dr_grpo
+
+# Report artifacts: tables + figures in one run (CPU, pure read). aggregate_task3 also
+#   (re)generates the figures unless --tables-only is passed.
+python -m scripts.aggregate_task3 --config configs/grpo.yaml --name standard
+#   figures only (standalone): python -m scripts.plot_task3 --config configs/grpo.yaml --name standard
+python -m scripts.dump_task3_qualitative --config configs/grpo.yaml --name standard
+```
+
+`aggregate_task3.py` writes `task3_standard_summary.csv` (one-row continuation summary: updates, K, wall-clock, peak VRAM, first/last reward·KL·entropy·length, mean within-group reward std, mean uninformative-group fraction, mean clip fraction, count of GradScaler-skipped updates), `task3_continuation.csv` (per-update trajectory), `task3_group_size.csv` + `task3_group_size_by_difficulty.csv` (informative-group fraction, within-group reward std, group-relative-signal variance for K∈{2,4,8}, overall and per difficulty tercile), `task3_normalization.csv` (canonical vs Dr. GRPO held-out reward/KL/length/entropy + `policy_term_std_over_updates` + the length-conditioned gradient statistic), and `task3_summary.json`. Figures: `task3_standard_trajectory.png`, `task3_standard_diagnostics.png`, `task3_group_size.png`, `task3_normalization.png`.
+
+**GRPO objective defect.** The core defect in `task3_grpo/grpo.py` was that `group_relative_advantages` normalized **globally**, ignoring `group_ids`; it now standardizes **within each prompt group** and uses the manual's additive denominator `σ_r + ε` (`A_k = (r_k − μ_r)/(σ_r + ε)`), validated by `scripts/verify_grpo_groups.py` (within-group mean-zero, constant group → zero advantage, shift invariance). The reported KL uses the shared `sampled_per_token_mean(...)` log-ratio convention for cross-task comparability; the k3 estimator actually added to the objective (`exp(Δ)−Δ−1`) is logged separately as `kl_penalty_k3`.
+
+**K-cache schema (confirmed)** `source_index:int, prompt_id:str, generation_index:int, completion:str, completion_tokens:int, terminated_with_eos:bool, clipped_at_max:bool, reward:float` — 192 rows, 24 prompts × 8 completions, no missing values. The group-size and normalization diagnostics use `reward` and `completion_tokens` directly (no field guessing) and compute the group-relative signal **locally** as a reconstruction of `A_k = (r_k − μ_r)/(σ_r + ε)` (`advantage_eps = 1e-6`), deliberately decoupled from the training helper so the analysis is correct regardless of it.
+
+**Normalization diagnostic is an analytic illustration.** The length-conditioned gradient diagnostic (`norm_diagnostic.json`, `task3_norm_diagnostic.csv`) scores the fixed K-cache under both normalization formulas; because the K-cache comes from a different policy snapshot than `norm_grpo`/`norm_dr_grpo`, it shows what the two normalizers do to a fixed completion-length distribution — it is **not** gradient data from the actual forks (those supply held-out reward/KL/length via `evaluate.py`). This is flagged in both outputs. Clipped (`clipped_at_max`) completions are **included** in the illustration (the long tail is where the normalizers differ most; Step 1 masks them from the training loss only); degenerate groups (within-group reward std ≤ tolerance, e.g. the all-identical prompt) are **excluded** (zero advantage → zero gradient), with counts reported. The Dr. GRPO constant uses `cache_generation_cap` and cancels in every reported correlation/ratio.
+
+Every table/summary output records the KL convention string `sampled_per_token_mean(sum_tokens/sum_response_tokens)` where KL is reported, matching Tasks 1–2. Standard-continuation peak VRAM and wall-clock live in `standard_summary.json` and `task3_standard_summary.csv`.
+
+Code attribution: portions of the Task 3 training/evaluation/ablation code were implemented with coding assistance from an LLM (Anthropic Claude); all submitted code was reviewed, tested, and is understood by the author, who is responsible for every line. The PDF report is written entirely by the author without AI assistance (see §9).
