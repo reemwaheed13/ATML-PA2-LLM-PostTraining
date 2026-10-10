@@ -1,5 +1,9 @@
 base_config: configs/base.yaml
 results_dir: results
+
+# Deterministic held-out decoding, shared with Tasks 2 and 3 (greedy). Task 4 generate.py fails
+# loudly if eval_do_sample is unset, exactly like task3_grpo/evaluate.py -- no silent default.
+eval_do_sample: false
 safety_max_new_tokens: 256
 math_max_new_tokens: 512
 judge_max_new_tokens: 64
