@@ -287,3 +287,38 @@ python -m scripts.dump_task3_qualitative --config configs/grpo.yaml --name stand
 Every table/summary output records the KL convention string `sampled_per_token_mean(sum_tokens/sum_response_tokens)` where KL is reported, matching Tasks 1–2. Standard-continuation peak VRAM and wall-clock live in `standard_summary.json` and `task3_standard_summary.csv`.
 
 Code attribution: portions of the Task 3 training/evaluation/ablation code were implemented with coding assistance from an LLM (Anthropic Claude); all submitted code was reviewed, tested, and is understood by the author, who is responsible for every line. The PDF report is written entirely by the author without AI assistance (see §9).
+
+## 13. Task 4 run sequence (ordered)
+
+All runnable as `python -m ...` from the repo root; output goes to `results/task4_safety/`. Four **fixed** policies, no substitutions: **SFT** = untouched `Qwen2.5-1.5B-Instruct` (no adapter), **DPO** = `outputs/task1_dpo/standard`, **PPO** = `outputs/task2_ppo/standard`, **GRPO** = `outputs/task3_grpo/standard`. `generate.py`'s `policy_adapter()` rejects any adapter path not ending in `standard`, so a β-sweep / clipping-KL fork / normalization fork cannot be substituted. Decoding is deterministic greedy for all four (`eval_do_sample: false` in `configs/feedback.yaml`, `max_new_tokens = safety_max_new_tokens = 256`), one response per prompt; `generate.py` fails loudly if `eval_do_sample` is unset, exactly like `task3_grpo/evaluate.py`. All generation/judging is resumable (append per-prompt JSONL, skip ids already present), so a Colab disconnect costs only the current batch.
+
+```bash
+# 1. Generate SFT responses FIRST (needs no Task 1-3 adapter) so hand-labelling can start while
+#    the DPO/PPO/GRPO adapters are still training.
+python -m task4_safety.generate --config configs/feedback.yaml --policies sft
+
+# 2. Emit the fixed, BLIND 60-example audit worksheet (30 SAFE + 30 UNSAFE SFT responses;
+#    prompt + response + empty manual_label; NO AI label shown). Hand-label manual_label with
+#    one of SAFE_ANSWER / JUSTIFIED_REFUSAL / UNSAFE_COMPLIANCE / OVER_REFUSAL / AMBIGUOUS.
+python -m task4_safety.sample_audit --config configs/feedback.yaml
+
+# 3. Generate the remaining three policies once their standard adapters exist.
+python -m task4_safety.generate --config configs/feedback.yaml --policies dpo ppo grpo
+#    (or all four at once: python -m task4_safety.generate --config configs/feedback.yaml)
+
+# 4. Run the fixed AI judge over every policy's responses (released judge/prompt/parser; the
+#    five labels only; confidence stored for auditing, never aggregated).
+python -m task4_safety.judge --config configs/feedback.yaml
+
+# 5. Score the manual audit against the judge (after BOTH hand-labelling and judging SFT).
+python -m task4_safety.score_audit --config configs/feedback.yaml
+
+# 6. Aggregate report tables (CPU, pure read).
+python -m scripts.aggregate_task4 --config configs/feedback.yaml
+```
+
+`generate.py` writes `generated_<policy>.jsonl` (+ `generation_meta.json`); `judge.py` writes `judged_<policy>.jsonl` (+ `judge_meta.json`); `sample_audit.py` writes `manual_audit_worksheet.csv` (blind) + `manual_audit_ids.json`; `score_audit.py` writes `manual_audit_agreement.json` + `manual_audit_confusion.csv` (5×5 manual-vs-judge). `aggregate_task4.py` writes `task4_safety_rates.csv` (per policy: paired `safe_answer_rate`/`over_refusal_rate` over SAFE prompts, `unsafe_compliance_rate`/`justified_refusal_rate` over UNSAFE prompts, overall `ambiguous_rate`, `mean_response_length`), `task4_category_distribution.csv` (label counts per XSTest `type` for all four policies), and `task4_summary.json` (folds in the manual-audit confusion when present). The paired safe/unsafe rates deliberately separate genuine reduction in harmful compliance from indiscriminate refusal, which a single refusal metric would conflate.
+
+These entry points (`generate.py`, `judge.py`, `sample_audit.py`, `score_audit.py`) implement the Task 4 evaluation on top of the released utilities: `judge.py` reuses `judge_responses.load_judge`/`judge_one`/`JUDGE_PROMPT` unmodified (no student-authored judge prompt), and `sample_audit.py` reuses `make_audit_sheet.fixed_audit_ids` for the identical reproducible subset.
+
+Code attribution: portions of the Task 4 evaluation/aggregation code were implemented with coding assistance from an LLM (Anthropic Claude); all submitted code was reviewed, tested, and is understood by the author, who is responsible for every line. The AI safety judge, its prompt, and its parser are course-supplied. The PDF report is written entirely by the author without AI assistance (see §9).
