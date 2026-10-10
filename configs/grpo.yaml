@@ -12,6 +12,20 @@ max_prompt_length: 256
 max_completion_length: 512
 mask_truncated_completions: true
 max_grad_norm: 1.0
+
+# A group is informative when its sampled rewards have non-zero std under this tolerance.
+# Equals the clamp_min floor inside group_relative_advantages (task3_grpo/grpo.py), so the
+# "uninformative group -> zero advantage" definition is numerically consistent end to end.
+advantage_eps: 1.0e-6
+group_std_tolerance: 1.0e-6
+
+reward_max_length: 1280
+
+# Held-out eval decoding. Greedy, shared convention with Task 2 (configs/ppo.yaml) so KL and
+# length stay comparable for the cross-task synthesis. evaluate.py fails loudly if unset.
+eval_do_sample: false
+eval_max_response_length: 768
+
 output: outputs/task3_grpo/standard
 results_dir: results/task3_grpo
 group_cache: cached/grpo_k_cache.jsonl
