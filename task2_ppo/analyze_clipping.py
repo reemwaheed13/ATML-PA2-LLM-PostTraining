@@ -393,9 +393,28 @@ def cached_clip_study(cfg, out_path):
         )
 
     # Pre-pass (tokenizer only, no model): fix T from the cached per-token arrays, validate the
-    # response_tokens COUNT against it, and re-tokenize the response TEXT, asserting its length ==
-    # T. Collect every re-tokenization mismatch and raise with the count -- never truncate.
+    # response_tokens COUNT against it, and re-tokenize the response TEXT. The cached per-token
+    # arrays INCLUDE the terminal EOS token, which is NOT part of the response text -- so a row that
+    # terminated with EOS re-tokenizes exactly one token short, while a row that hit the length cap
+    # (terminated_with_eos False) has no EOS and matches exactly. The fix appends eos_token_id iff
+    # terminated_with_eos is True, then asserts the final length == T, still raising on any
+    # off-by-more-than-the-single-EOS. Per-row evidence + counts are logged/recorded before any raise.
+    eos_id = tokenizer.eos_token_id
+    if eos_id is None:
+        raise ValueError(
+            "tokenizer has no eos_token_id; cannot reconstruct the terminal EOS token that the "
+            "cached per-token arrays include."
+        )
+
     prepared, retok_mismatches = [], []
+    verify = {
+        "n_rows": len(rows), "n_terminated_with_eos": 0, "n_clipped_at_max": 0,
+        "raw_match_and_not_eos": 0, "raw_match_and_eos": 0,
+        "raw_mismatch_and_eos": 0, "raw_mismatch_and_not_eos": 0,
+        "eos_vs_clipped": {"eos&cap": 0, "eos&nocap": 0, "noeos&cap": 0, "noeos&nocap": 0},
+        "hypothesis": "raw_match == (not terminated_with_eos)",
+        "hypothesis_violations": [],
+    }
     for i, row in enumerate(rows):
         old_len = int(_as1d(row["old_logprobs"]).numel())
         ref_len = int(_as1d(row["ref_logprobs"]).numel())
@@ -412,24 +431,57 @@ def cached_clip_study(cfg, out_path):
                 f"row {i}: response_tokens count {rt_count} != len(old_logprobs) {T} "
                 f"(source_index={row.get('source_index')!r})"
             )
+
+        eos = bool(row.get("terminated_with_eos", False))
+        cam = bool(row.get("clipped_at_max", False))
         seq, attn, pw, resp, recon_src = _reconstruct(row, tokenizer, resolve_prompt)
-        rt_len = int(resp.shape[1])
-        if rt_len != T:
+        base_len = int(resp.shape[1])          # re-tokenized length WITHOUT any appended EOS
+        raw_match = (base_len == T)
+
+        # Verification bookkeeping (the hypothesis: raw_match == (not terminated_with_eos)).
+        verify["n_terminated_with_eos"] += int(eos)
+        verify["n_clipped_at_max"] += int(cam)
+        verify[("raw_match" if raw_match else "raw_mismatch") + ("_and_eos" if eos else "_and_not_eos")] += 1
+        verify["eos_vs_clipped"][("eos" if eos else "noeos") + ("&cap" if cam else "&nocap")] += 1
+        if raw_match != (not eos):
+            verify["hypothesis_violations"].append(
+                {"row": i, "terminated_with_eos": eos, "raw_match": raw_match, "base_len": base_len, "cached_T": T}
+            )
+        print(f"[clip-study] row {i:2d}: terminated_with_eos={eos!s:>5} clipped_at_max={cam!s:>5} "
+              f"retok_len={base_len} cached_T={T} raw_match={raw_match!s:>5}")
+
+        # FIX: append the terminal EOS token exactly when the rollout terminated with EOS, so the
+        # forward-pass response aligns to the cached per-token length T (which includes the EOS).
+        if eos:
+            eos_col = torch.tensor([[eos_id]], dtype=resp.dtype)
+            resp = torch.cat([resp, eos_col], dim=1)
+            seq = torch.cat([seq, eos_col.to(seq.dtype)], dim=1)
+            attn = torch.cat([attn, torch.ones((1, 1), dtype=attn.dtype)], dim=1)
+
+        final_len = int(resp.shape[1])
+        if final_len != T:
             retok_mismatches.append(
-                {"row": i, "source_index": row.get("source_index"), "retokenized_len": rt_len, "cached_T": T}
+                {"row": i, "source_index": row.get("source_index"), "terminated_with_eos": eos,
+                 "retok_len_no_eos": base_len, "final_len": final_len, "cached_T": T}
             )
         prepared.append((row, T, seq, attn, pw, resp, recon_src))
 
+    print(f"[clip-study] EOS/length verification over {len(rows)} rows: "
+          f"terminated_with_eos={verify['n_terminated_with_eos']}, clipped_at_max={verify['n_clipped_at_max']}; "
+          f"raw(no EOS): match&not_eos={verify['raw_match_and_not_eos']} match&eos={verify['raw_match_and_eos']} "
+          f"mismatch&eos={verify['raw_mismatch_and_eos']} mismatch&not_eos={verify['raw_mismatch_and_not_eos']}; "
+          f"eos_vs_clipped={verify['eos_vs_clipped']}; "
+          f"hypothesis(raw_match==not eos) violations={len(verify['hypothesis_violations'])}")
+
     if retok_mismatches:
         raise ValueError(
-            f"{len(retok_mismatches)}/{len(rows)} rows: re-tokenized response length != "
-            f"len(old_logprobs). The cache stores response TEXT but no token IDs, so new_logp "
-            f"cannot be aligned to the cached per-token arrays for these rows. "
-            f"Details: {retok_mismatches}"
+            f"{len(retok_mismatches)}/{len(rows)} rows still mismatch AFTER EOS alignment (off by "
+            f"more than the single terminal EOS). The cache stores response TEXT but no token IDs, "
+            f"so new_logp cannot be aligned for these rows. Details: {retok_mismatches}"
         )
 
-    print(f"[clip-study] pre-pass OK: {len(prepared)} rows, re-tokenization mismatches=0, "
-          f"T=len(old_logprobs) in [{min(p[1] for p in prepared)}, {max(p[1] for p in prepared)}]")
+    print(f"[clip-study] pre-pass OK after EOS alignment: {len(prepared)} rows, 0 residual "
+          f"mismatches, T=len(old_logprobs) in [{min(p[1] for p in prepared)}, {max(p[1] for p in prepared)}]")
 
     standard = load_policy(cfg, adapter_path=new_adapter, trainable=False)
     standard.eval()
@@ -539,8 +591,11 @@ def cached_clip_study(cfg, out_path):
         "retokenization": {
             "reason": "cache stores response TEXT, not token IDs; the response is re-tokenized for "
                       "the new_logp forward pass",
-            "assert": "re-tokenized length == len(old_logprobs) per row",
-            "rows_with_length_mismatch": 0,  # any mismatch raises in the pre-pass before reaching here
+            "eos_alignment": "cached per-token arrays include the terminal EOS; eos_token_id is "
+                             "appended to the re-tokenized ids iff terminated_with_eos is True",
+            "assert": "final (EOS-aligned) length == len(old_logprobs) per row; raises otherwise",
+            "rows_with_residual_mismatch": 0,  # any residual mismatch raises in the pre-pass first
+            "verification": verify,
         },
         "alignment": "per row: len(old_logp)==len(new_logp)==len(ref_logp)==len(values)==T="
                      "len(old_logprobs) enforced (raises on mismatch); ratio=exp(new-old)",
