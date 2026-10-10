@@ -1,0 +1,2 @@
+updates,wall_seconds,peak_vram_gb,reward_first,reward_last,kl_first,kl_last,entropy_first,entropy_last,length_first,length_last,mean_clip_fraction,n_updates_step_skipped
+20,282.70709713400015,7.088132096,-0.8359375,0.344482421875,0.00010529261635383591,0.00015350297326222062,0.7216601371765137,0.5575477480888367,512.0,18.0,0.0,4

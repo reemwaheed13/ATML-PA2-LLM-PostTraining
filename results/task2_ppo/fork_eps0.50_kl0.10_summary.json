@@ -1,0 +1,12 @@
+{
+  "run_name": "fork_eps0.50_kl0.10",
+  "output": "/content/ATML-PA2-LLM-PostTraining/outputs/task2_ppo/fork_eps0.50_kl0.10",
+  "updates": 8,
+  "ppo_epochs": 2,
+  "clip_epsilon": 0.5,
+  "kl_beta": 0.1,
+  "wall_seconds": 106.84620486599988,
+  "peak_vram_gb": 7.734809088,
+  "kl_convention": "sampled_per_token_mean(sum_tokens/sum_response_tokens)",
+  "precision": "base_fp16+lora_fp32_peft_native+autocast_fp16+gradscaler"
+}

@@ -1,0 +1,57 @@
+{
+  "name": "fork_eps0.20_kl0.20",
+  "adapter": "outputs/task2_ppo/fork_eps0.20_kl0.20",
+  "seed": 6304,
+  "num_generations": 200,
+  "reward_mean": 1.4691049194335937,
+  "reward_std": 1.556231915796838,
+  "length_mean": 289.86,
+  "length_std": 254.8360264954702,
+  "length_iqr": 441.75,
+  "entropy_mean": 0.5612863300228491,
+  "truncated_fraction": 0.09,
+  "eos_fraction": 0.91,
+  "kl_sampled": -2.595704959727706e-05,
+  "decoding": {
+    "do_sample": false,
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "max_new_tokens": 768,
+    "max_prompt_length": 256,
+    "samples_per_prompt": 1
+  },
+  "precision": "base_fp16+lora_fp32_peft_native+autocast_fp16+gradscaler",
+  "kl_convention": "sampled_per_token_mean(sum_tokens/sum_response_tokens)",
+  "wall_seconds": 1044.4944089290002,
+  "sec_per_generation": 5.222472044645001,
+  "qualitative_candidates": {
+    "high_reward_idx": [
+      5,
+      68,
+      52,
+      123,
+      175
+    ],
+    "low_reward_idx": [
+      112,
+      139,
+      28,
+      34,
+      180
+    ],
+    "short_but_rewarded_idx": [
+      56,
+      117,
+      10,
+      3,
+      86
+    ],
+    "long_but_low_reward_idx": [
+      1,
+      4,
+      8,
+      33,
+      35
+    ]
+  }
+}

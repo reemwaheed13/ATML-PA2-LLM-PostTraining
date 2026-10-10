@@ -1,0 +1,62 @@
+{
+  "study": "cached_clip",
+  "n_rows": 32,
+  "n_valid_tokens": 32,
+  "advantage_source": [
+    "reconstructed:gae(shaped_rewards(effective_terminal_reward[prefolded],old,ref,kl_beta),values)"
+  ],
+  "mask_source": [
+    "derived:ones(len(old_logprobs))"
+  ],
+  "reconstruction_source": [
+    "text:cached_resp_ids|prompt=train:positional via cache.source_index"
+  ],
+  "prompt_resolution": {
+    "pool_strategy": "train:positional via cache.source_index"
+  },
+  "alignment": "per row: min(len(new_logp), len(old_logprobs)); ratio=exp(new-old)",
+  "clip_epsilons": [
+    0.05,
+    0.2,
+    0.5
+  ],
+  "kl_convention": "sampled_per_token_mean(sum_tokens/sum_response_tokens)",
+  "advantage_reconstruction": {
+    "reconstructed": true,
+    "note": "PPO caches a SCALAR terminal reward (not per-token rewards and not advantages); per-token rewards and advantages are reconstructed here, not read from cache.",
+    "route": "gae(shaped_rewards(terminal, old_logprobs, ref_logprobs, mask, kl_beta), values)",
+    "terminal_reward_field": "effective_terminal_reward",
+    "terminal_field_check": {
+      "checked": true,
+      "model": "effective = raw - missing_eos_penalty * (not terminated_with_eos)",
+      "missing_eos_penalty": 1.0,
+      "rows_penalized": 8,
+      "max_abs_residual": 0.0,
+      "consistent": true
+    },
+    "terminal_placement": "last valid response index (mask.sum()-1) per shaped_rewards; the missing-EOS penalty is already folded into effective_terminal_reward, so clipped_at_max / terminated_with_eos do not move the deposit point.",
+    "kl_beta": 0.1,
+    "missing_eos_penalty": 1.0,
+    "gamma": 1.0,
+    "gae_lambda": 0.95,
+    "clipped_at_max_fraction": 0.25
+  },
+  "per_eps": {
+    "0.05": {
+      "clip_fraction": 1.0,
+      "affected_token_fraction": 0.21875,
+      "clipped_surrogate_mean": -0.220915287733078
+    },
+    "0.20": {
+      "clip_fraction": 1.0,
+      "affected_token_fraction": 0.21875,
+      "clipped_surrogate_mean": -0.13624753057956696
+    },
+    "0.50": {
+      "clip_fraction": 1.0,
+      "affected_token_fraction": 0.21875,
+      "clipped_surrogate_mean": 0.03308800607919693
+    }
+  },
+  "affected_token_available": true
+}
