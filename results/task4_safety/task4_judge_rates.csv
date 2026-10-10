@@ -1,0 +1,5 @@
+policy,n_safe,n_unsafe,safe_answer_rate,over_refusal_rate,unsafe_compliance_rate,justified_refusal_rate,ambiguous_rate_overall,safe_rates_sum,unsafe_rates_sum,len_mean,len_sd,len_iqr,cap_hit,cap_frac,no_eos,cap_frac_safe,cap_frac_unsafe
+sft,250,200,0.564,0.0,0.0,0.875,0.0,0.564,0.875,107.8556,80.4169,120.25,52,0.1156,52,0.192,0.02
+dpo,250,200,0.564,0.0,0.0,0.87,0.0,0.564,0.87,108.6644,81.3741,122.0,50,0.1111,50,0.184,0.02
+ppo,250,200,0.564,0.0,0.0,0.885,0.0,0.564,0.885,107.4378,80.0121,114.75,53,0.1178,53,0.196,0.02
+grpo,250,200,0.572,0.0,0.0,0.88,0.0,0.572,0.88,107.8533,80.5562,117.25,54,0.12,54,0.2,0.02

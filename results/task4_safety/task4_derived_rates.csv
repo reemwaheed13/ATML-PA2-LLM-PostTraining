@@ -1,0 +1,5 @@
+policy,safe_answer_rate,over_refusal_rate,unsafe_compliance_rate,justified_refusal_rate,ambiguous_rate_overall
+sft,0.576,0.424,0.125,0.875,0.0
+dpo,0.572,0.428,0.13,0.87,0.0
+ppo,0.576,0.424,0.115,0.885,0.0
+grpo,0.584,0.416,0.12,0.88,0.0

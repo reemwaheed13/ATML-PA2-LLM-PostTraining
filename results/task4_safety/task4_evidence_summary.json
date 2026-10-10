@@ -1,0 +1,153 @@
+{
+  "n_prompts": 450,
+  "policies": [
+    "sft",
+    "dpo",
+    "ppo",
+    "grpo"
+  ],
+  "judge_rates": [
+    {
+      "policy": "sft",
+      "n_safe": 250,
+      "n_unsafe": 200,
+      "safe_answer_rate": 0.564,
+      "over_refusal_rate": 0.0,
+      "unsafe_compliance_rate": 0.0,
+      "justified_refusal_rate": 0.875,
+      "ambiguous_rate_overall": 0.0,
+      "safe_rates_sum": 0.564,
+      "unsafe_rates_sum": 0.875,
+      "len_mean": 107.8556,
+      "len_sd": 80.4169,
+      "len_iqr": 120.25,
+      "cap_hit": 52,
+      "cap_frac": 0.1156,
+      "no_eos": 52,
+      "cap_frac_safe": 0.192,
+      "cap_frac_unsafe": 0.02
+    },
+    {
+      "policy": "dpo",
+      "n_safe": 250,
+      "n_unsafe": 200,
+      "safe_answer_rate": 0.564,
+      "over_refusal_rate": 0.0,
+      "unsafe_compliance_rate": 0.0,
+      "justified_refusal_rate": 0.87,
+      "ambiguous_rate_overall": 0.0,
+      "safe_rates_sum": 0.564,
+      "unsafe_rates_sum": 0.87,
+      "len_mean": 108.6644,
+      "len_sd": 81.3741,
+      "len_iqr": 122.0,
+      "cap_hit": 50,
+      "cap_frac": 0.1111,
+      "no_eos": 50,
+      "cap_frac_safe": 0.184,
+      "cap_frac_unsafe": 0.02
+    },
+    {
+      "policy": "ppo",
+      "n_safe": 250,
+      "n_unsafe": 200,
+      "safe_answer_rate": 0.564,
+      "over_refusal_rate": 0.0,
+      "unsafe_compliance_rate": 0.0,
+      "justified_refusal_rate": 0.885,
+      "ambiguous_rate_overall": 0.0,
+      "safe_rates_sum": 0.564,
+      "unsafe_rates_sum": 0.885,
+      "len_mean": 107.4378,
+      "len_sd": 80.0121,
+      "len_iqr": 114.75,
+      "cap_hit": 53,
+      "cap_frac": 0.1178,
+      "no_eos": 53,
+      "cap_frac_safe": 0.196,
+      "cap_frac_unsafe": 0.02
+    },
+    {
+      "policy": "grpo",
+      "n_safe": 250,
+      "n_unsafe": 200,
+      "safe_answer_rate": 0.572,
+      "over_refusal_rate": 0.0,
+      "unsafe_compliance_rate": 0.0,
+      "justified_refusal_rate": 0.88,
+      "ambiguous_rate_overall": 0.0,
+      "safe_rates_sum": 0.572,
+      "unsafe_rates_sum": 0.88,
+      "len_mean": 107.8533,
+      "len_sd": 80.5562,
+      "len_iqr": 117.25,
+      "cap_hit": 54,
+      "cap_frac": 0.12,
+      "no_eos": 54,
+      "cap_frac_safe": 0.2,
+      "cap_frac_unsafe": 0.02
+    }
+  ],
+  "labels_never_emitted": [
+    "AMBIGUOUS",
+    "OVER_REFUSAL"
+  ],
+  "derived_rates": [
+    {
+      "policy": "sft",
+      "safe_answer_rate": 0.576,
+      "over_refusal_rate": 0.424,
+      "unsafe_compliance_rate": 0.125,
+      "justified_refusal_rate": 0.875,
+      "ambiguous_rate_overall": 0.0
+    },
+    {
+      "policy": "dpo",
+      "safe_answer_rate": 0.572,
+      "over_refusal_rate": 0.428,
+      "unsafe_compliance_rate": 0.13,
+      "justified_refusal_rate": 0.87,
+      "ambiguous_rate_overall": 0.0
+    },
+    {
+      "policy": "ppo",
+      "safe_answer_rate": 0.576,
+      "over_refusal_rate": 0.424,
+      "unsafe_compliance_rate": 0.115,
+      "justified_refusal_rate": 0.885,
+      "ambiguous_rate_overall": 0.0
+    },
+    {
+      "policy": "grpo",
+      "safe_answer_rate": 0.584,
+      "over_refusal_rate": 0.416,
+      "unsafe_compliance_rate": 0.12,
+      "justified_refusal_rate": 0.88,
+      "ambiguous_rate_overall": 0.0
+    }
+  ],
+  "audit": {
+    "n": 60,
+    "agreement_5way_raw": 0.7333,
+    "agreement_5way_derived": 0.9167,
+    "agreement_binary": 0.9167,
+    "manual_ambiguous_rate": 0.0,
+    "judge_ambiguous_rate": 0.0,
+    "by_truncation": [
+      {
+        "truncated": false,
+        "agree_5way": 0.7234,
+        "agree_derived": 0.9362,
+        "agree_binary": 0.9362,
+        "n": 47
+      },
+      {
+        "truncated": true,
+        "agree_5way": 0.7692,
+        "agree_derived": 0.8462,
+        "agree_binary": 0.8462,
+        "n": 13
+      }
+    ]
+  }
+}
