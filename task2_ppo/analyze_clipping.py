@@ -7,9 +7,9 @@ import torch
 
 from common.data import load_yaml, prompt_messages, read_jsonl, repo_path
 from common.logging_utils import save_json
-from common.models import load_policy, load_tokenizer, load_value_model, reference_mode
+from common.models import load_policy, load_tokenizer
 from common.precision import token_logprobs
-from task2_ppo.continue_train import KL_CONVENTION, _response_values, fork_name, run_fork
+from task2_ppo.continue_train import KL_CONVENTION, fork_name, run_fork
 from task2_ppo.ppo import compute_gae, shaped_rewards
 
 
@@ -45,7 +45,9 @@ def load_cached_rollouts(path):
 _TERMINAL_REWARD_KEYS = ("effective_terminal_reward", "terminal_reward", "raw_terminal_reward")
 _SEQ_KEYS = ("sequences", "input_ids")
 _PW_KEYS = ("prompt_width", "prompt_len", "prompt_length", "query_len")
-_RESP_ID_KEYS = ("response_ids", "response_tokens", "responses_ids")
+# NOTE: this cache's "response_tokens" is an INTEGER COUNT, not an id array, so it is deliberately
+# NOT listed here -- _reconstruct must re-tokenize the response TEXT, never read response_tokens.
+_RESP_ID_KEYS = ("response_ids", "responses_ids")
 _PROMPT_ID_KEYS = ("prompt_ids", "prompt_input_ids", "query_ids")
 
 
@@ -371,61 +373,93 @@ def cached_clip_study(cfg, out_path):
     # (and, with main() reordered, never after the GPU forks already ran).
     resolve_prompt, pool_strategy = _build_prompt_resolver(cfg, rows)
 
-    # The cache stores old_logprobs/ref_logprobs/values as SEQUENCE-LEVEL SCALARS (len==1 per
-    # row), not per-token arrays, so the per-token importance ratio and advantages CANNOT be read
-    # from the cache -- the prior code did, and a silent min() truncated every response to its
-    # first token (hence clip_fraction==1.0 at every epsilon and an identical affected fraction).
-    # Recompute every per-token quantity by forward passes (NO training, NO adapter mutation):
-    #   old_logp = rollout (midpoint) policy over response_tokens   -> what "old_logprobs" means
-    #   new_logp = standard continuation policy over response_tokens -> the post-update policy
-    #   ref_logp = midpoint policy with the LoRA adapter disabled (reference/base)
-    #   values   = midpoint critic over the sequence (the GAE baseline)
-    # The only cached quantity used is the scalar terminal reward (effective_terminal_reward).
+    tokenizer = load_tokenizer(cfg["base_model"])
+
+    # The cache stores per-token quantities DIRECTLY: old_logprobs/ref_logprobs/values are each
+    # length-T tensors (T = response token count). "response_tokens" is an INTEGER COUNT, not an id
+    # array -- the earlier code mistook it for the token sequence, so T collapsed to 1 and every
+    # response was truncated to its first token. Used directly, no reconstruction:
+    #   old_logp = cached old_logprobs   (midpoint/rollout policy, per-token)
+    #   ref_logp = cached ref_logprobs   (per-token)
+    #   values   = cached values         (per-token critic baseline)
+    # Only new_logp needs a model: a forward pass of the standard continuation over the response.
+    # The cache stores response TEXT (no token IDs), so the response is re-tokenized and its length
+    # asserted == T before any ratio is formed.
     new_adapter = cfg["output"]  # outputs/task2_ppo/standard
     if not repo_path(new_adapter).exists():
         raise FileNotFoundError(
             f"standard continuation adapter not found at {repo_path(new_adapter)}; it is the "
             f"'new' policy for the ratio. Run the standard PPO continuation before this study."
         )
-    tokenizer = load_tokenizer(cfg["base_model"])
-    midpoint = load_policy(cfg, adapter_path=cfg["paths"]["ppo_midpoint_policy"], trainable=False)
+
+    # Pre-pass (tokenizer only, no model): fix T from the cached per-token arrays, validate the
+    # response_tokens COUNT against it, and re-tokenize the response TEXT, asserting its length ==
+    # T. Collect every re-tokenization mismatch and raise with the count -- never truncate.
+    prepared, retok_mismatches = [], []
+    for i, row in enumerate(rows):
+        old_len = int(_as1d(row["old_logprobs"]).numel())
+        ref_len = int(_as1d(row["ref_logprobs"]).numel())
+        val_len = int(_as1d(row["values"]).numel())
+        if not (old_len == ref_len == val_len):
+            raise ValueError(
+                f"row {i}: cached per-token lengths disagree -- old_logprobs={old_len} "
+                f"ref_logprobs={ref_len} values={val_len} (source_index={row.get('source_index')!r})"
+            )
+        T = old_len
+        rt_count = int(_as1d(row["response_tokens"]).flatten()[0])  # integer COUNT, validation only
+        if rt_count != T:
+            raise ValueError(
+                f"row {i}: response_tokens count {rt_count} != len(old_logprobs) {T} "
+                f"(source_index={row.get('source_index')!r})"
+            )
+        seq, attn, pw, resp, recon_src = _reconstruct(row, tokenizer, resolve_prompt)
+        rt_len = int(resp.shape[1])
+        if rt_len != T:
+            retok_mismatches.append(
+                {"row": i, "source_index": row.get("source_index"), "retokenized_len": rt_len, "cached_T": T}
+            )
+        prepared.append((row, T, seq, attn, pw, resp, recon_src))
+
+    if retok_mismatches:
+        raise ValueError(
+            f"{len(retok_mismatches)}/{len(rows)} rows: re-tokenized response length != "
+            f"len(old_logprobs). The cache stores response TEXT but no token IDs, so new_logp "
+            f"cannot be aligned to the cached per-token arrays for these rows. "
+            f"Details: {retok_mismatches}"
+        )
+
+    print(f"[clip-study] pre-pass OK: {len(prepared)} rows, re-tokenization mismatches=0, "
+          f"T=len(old_logprobs) in [{min(p[1] for p in prepared)}, {max(p[1] for p in prepared)}]")
+
     standard = load_policy(cfg, adapter_path=new_adapter, trainable=False)
-    value_model = load_value_model(cfg, cfg["paths"]["ppo_midpoint_value"], train_mode="frozen")
-    midpoint.eval()
     standard.eval()
-    value_model.eval()
-    device = next(midpoint.parameters()).device
+    device = next(standard.parameters()).device
 
     ratios_all, adv_all = [], []
     recon_sources, term_fields_used, penalty_modes = set(), set(), set()
     resp_counts = []
     printed_row0 = False
 
-    for row in rows:
-        seq, attn, pw, resp, recon_src = _reconstruct(row, tokenizer, resolve_prompt)
+    for i, (row, T, seq, attn, pw, resp, recon_src) in enumerate(prepared):
         recon_sources.add(recon_src)
-        seq_d, attn_d, resp_d = seq.to(device), attn.to(device), resp.to(device)
-        # T = the response token count for THIS row. _reconstruct returns resp as [1, T].
-        T = int(resp.shape[1])
         resp_counts.append(T)
 
-        # Normalize every recomputed per-token quantity to 1-D [T] with _as1d (which .flatten()s,
-        # so it NEVER collapses a length-1 response to a 0-d scalar the way [0].squeeze(0) did --
-        # that collapse is what made a 1-D tensor reach compute_gae's [:, t] index). token_logprobs
-        # returns (chosen[B,T], logits); _response_values returns [B, T].
+        # Per-token quantities read DIRECTLY from the cache; only new_logp is a forward pass.
+        # _as1d flattens to 1-D [T] (never collapsing to a 0-d scalar). token_logprobs returns
+        # (chosen[B,T], logits), so [0] then _as1d gives [T].
+        old_logp = _as1d(row["old_logprobs"])   # midpoint/rollout policy, per-token (cached)
+        ref_logp = _as1d(row["ref_logprobs"])    # per-token (cached)
+        values = _as1d(row["values"])            # per-token critic baseline (cached)
         with torch.no_grad():
-            old_logp = _as1d(token_logprobs(midpoint, seq_d, attn_d, pw, resp_d, cfg)[0])
-            new_logp = _as1d(token_logprobs(standard, seq_d, attn_d, pw, resp_d, cfg)[0])
-            with reference_mode(midpoint):
-                ref_logp = _as1d(token_logprobs(midpoint, seq_d, attn_d, pw, resp_d, cfg)[0])
-            values = _as1d(_response_values(value_model, seq_d, attn_d, pw, T, cfg))
+            new_logp = _as1d(token_logprobs(standard, seq.to(device), attn.to(device), pw, resp.to(device), cfg)[0])
 
-        mask = torch.ones(T)
+        mask = torch.ones(T)  # every response token is valid -> all-ones mask
 
         if not printed_row0:
-            print(f"[clip-study] row0 T(resp_count)={T}; 1-D shapes "
+            print(f"[clip-study] row0 T=len(old_logprobs)={T}; 1-D shapes "
                   f"old_logp={tuple(old_logp.shape)} new_logp={tuple(new_logp.shape)} "
-                  f"ref_logp={tuple(ref_logp.shape)} values={tuple(values.shape)}")
+                  f"ref_logp={tuple(ref_logp.shape)} values={tuple(values.shape)} "
+                  f"(response_tokens count == T, re-tokenized response len == T)")
             printed_row0 = True
 
         # RATIO guard (per-token): all 1-D length T, or raise -- never min() them together.
@@ -438,9 +472,8 @@ def cached_clip_study(cfg, out_path):
         penalty_modes.add(penalty_mode)
         terminal = torch.tensor([terminal_scalar], dtype=torch.float32)
 
-        # Build [1, T] deterministically from the normalized 1-D arrays (reshape, not a blind
-        # unsqueeze that can mint a 3-D or leave a 1-D), then rebuild rewards/advantages exactly
-        # as continue_train does.
+        # Build [1, T] deterministically, then build per-token rewards from the terminal scalar via
+        # shaped_rewards and advantages via compute_gae, exactly as continue_train does.
         old2, ref2, val2, mask2 = (x.reshape(1, T) for x in (old_logp, ref_logp, values, mask))
         rewards = shaped_rewards(terminal, old2, ref2, mask2, kl_beta)
         # GAE guard: rewards, values, mask all [1, T], or raise with all three shapes.
@@ -480,34 +513,44 @@ def cached_clip_study(cfg, out_path):
         "response_token_count": {"min": min(resp_counts), "max": max(resp_counts), "total": int(sum(resp_counts))},
         "reconstruction_source": sorted(recon_sources),
         "prompt_resolution": {"pool_strategy": pool_strategy},
-        # The ratio compares TWO policies: old = rollout (midpoint), new = standard continuation.
+        # The ratio compares TWO policies: old = cached midpoint/rollout per-token log-probs,
+        # new = standard continuation forward over the (re-tokenized) response.
         "policies": {
-            "old_logprobs": f"midpoint forward: {cfg['paths']['ppo_midpoint_policy']}",
-            "new_logprobs": f"standard continuation forward: {new_adapter}",
-            "ref_logprobs": "midpoint policy with LoRA adapter disabled (reference/base)",
-            "values": f"midpoint critic forward (frozen): {cfg['paths']['ppo_midpoint_value']}",
+            "old_logprobs": "cached per-token (midpoint/rollout policy)",
+            "new_logprobs": f"standard continuation forward over re-tokenized response: {new_adapter}",
+            "ref_logprobs": "cached per-token (reference)",
+            "values": "cached per-token (critic baseline)",
         },
-        # Document WHY recomputation was necessary: the cached per-token-looking fields are scalars.
+        "mask_source": "derived:ones(T); every response token is valid",
+        # The cached per-token fields are length-T tensors and are used directly. response_tokens is
+        # an INTEGER COUNT (validation only); mistaking it for the token sequence was the original
+        # bug that collapsed T to 1.
         "cache_per_token_fields": {
-            "status": "sequence-level scalars in cache (len==1); NOT used for per-token quantities",
+            "status": "per-token tensors (length T); used directly",
             "row0_lengths": {
                 "old_logprobs": _cached_len(rows[0], "old_logprobs"),
                 "ref_logprobs": _cached_len(rows[0], "ref_logprobs"),
                 "values": _cached_len(rows[0], "values"),
-                "response_tokens": resp_counts[0],
+                "response_tokens_count": int(_as1d(rows[0]["response_tokens"]).flatten()[0]),
             },
-            "note": "old_logprobs/ref_logprobs/values are stored per-sequence (scalar), so per-token "
-                    "ratios and advantages are recomputed by forward passes; only the scalar terminal "
-                    "reward is read from the cache.",
+            "note": "old_logprobs/ref_logprobs/values are per-token (length T); response_tokens is an "
+                    "integer count asserted == T. Only new_logp is recomputed (standard forward).",
         },
-        "alignment": "per row: len(old_logp)==len(new_logp)==len(ref_logp)==len(values)==response "
-                     "token count enforced (raises on mismatch); ratio=exp(new-old)",
+        "retokenization": {
+            "reason": "cache stores response TEXT, not token IDs; the response is re-tokenized for "
+                      "the new_logp forward pass",
+            "assert": "re-tokenized length == len(old_logprobs) per row",
+            "rows_with_length_mismatch": 0,  # any mismatch raises in the pre-pass before reaching here
+        },
+        "alignment": "per row: len(old_logp)==len(new_logp)==len(ref_logp)==len(values)==T="
+                     "len(old_logprobs) enforced (raises on mismatch); ratio=exp(new-old)",
         "clip_epsilons": eps_values,
         "kl_convention": KL_CONVENTION,
         "advantage_reconstruction": {
             "reconstructed": True,
             "route": "gae(shaped_rewards(terminal, old_logp, ref_logp, mask, kl_beta), values); "
-                     "old_logp/new_logp/ref_logp/values are all per-token FORWARD-recomputed, not cached",
+                     "old_logp/ref_logp/values are cached per-token, new_logp is a standard-policy "
+                     "forward over the re-tokenized response",
             "terminal_reward_field": sorted(term_fields_used),
             "terminal_penalty_mode": sorted(penalty_modes),
             "terminal_field_check": term_check,
@@ -538,8 +581,8 @@ def cached_clip_study(cfg, out_path):
         )
 
     save_json(out_path, result)
-    print(f"wrote {out_path} (clip + affected fractions; old=midpoint new={new_adapter}, "
-          f"{n_tokens} per-token ratios over {len(rows)} rows)")
+    print(f"wrote {out_path} (clip + affected fractions; old=cached midpoint per-token, "
+          f"new={new_adapter} forward; {n_tokens} per-token ratios over {len(rows)} rows)")
     return result
 
 
