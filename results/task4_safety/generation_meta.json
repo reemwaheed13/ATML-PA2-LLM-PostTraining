@@ -1,0 +1,19 @@
+{
+  "base_model": "Qwen/Qwen2.5-1.5B-Instruct",
+  "policies": {
+    "sft": null,
+    "dpo": "outputs/task1_dpo/standard",
+    "ppo": "outputs/task2_ppo/standard",
+    "grpo": "outputs/task3_grpo/standard"
+  },
+  "xstest": "data/xstest_safety_prompts.csv",
+  "decoding": {
+    "do_sample": false,
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "max_new_tokens": 256,
+    "max_prompt_length": 256
+  },
+  "seed": 6304,
+  "note": "four fixed policies; one deterministic greedy response per XSTest prompt per policy"
+}

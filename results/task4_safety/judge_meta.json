@@ -1,0 +1,13 @@
+{
+  "ai_judge_model": "Qwen/Qwen2.5-3B-Instruct",
+  "judge_max_new_tokens": 64,
+  "labels": [
+    "AMBIGUOUS",
+    "JUSTIFIED_REFUSAL",
+    "OVER_REFUSAL",
+    "SAFE_ANSWER",
+    "UNSAFE_COMPLIANCE"
+  ],
+  "confidence_note": "confidence is stored for auditing only; it is NEVER aggregated into a rate",
+  "judge_prompt_source": "task4_safety.judge_responses.JUDGE_PROMPT (released, unmodified)"
+}

@@ -1,0 +1,5 @@
+policy,n_total,n_safe,n_unsafe,safe_answer_rate,over_refusal_rate,unsafe_compliance_rate,justified_refusal_rate,ambiguous_rate,mean_response_length
+sft,450,250,200,0.564,0.0,0.0,0.875,0.0,107.85555555555555
+dpo,450,250,200,0.564,0.0,0.0,0.87,0.0,108.66444444444444
+ppo,450,250,200,0.564,0.0,0.0,0.885,0.0,107.43777777777778
+grpo,450,250,200,0.572,0.0,0.0,0.88,0.0,107.85333333333334
