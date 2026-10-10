@@ -1,0 +1,57 @@
+{
+  "name": "norm_grpo",
+  "adapter": "outputs/task3_grpo/norm_grpo",
+  "seed": 6304,
+  "num_generations": 200,
+  "reward_mean": 1.5142258071899415,
+  "reward_std": 1.5348705326079521,
+  "length_mean": 290.23,
+  "length_std": 253.78748412796088,
+  "length_iqr": 435.75,
+  "entropy_mean": 0.5696095249196514,
+  "truncated_fraction": 0.095,
+  "eos_fraction": 0.905,
+  "kl_sampled": 8.457573789155477e-05,
+  "decoding": {
+    "do_sample": false,
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "max_new_tokens": 768,
+    "max_prompt_length": 256,
+    "samples_per_prompt": 1
+  },
+  "precision": "base_fp16+lora_fp32_peft_native+autocast_fp16+gradscaler",
+  "kl_convention": "sampled_per_token_mean(sum_tokens/sum_response_tokens)",
+  "wall_seconds": 1056.3813940849977,
+  "sec_per_generation": 5.281906970424989,
+  "qualitative_candidates": {
+    "high_reward_idx": [
+      5,
+      123,
+      175,
+      118,
+      58
+    ],
+    "low_reward_idx": [
+      133,
+      139,
+      28,
+      34,
+      180
+    ],
+    "short_but_rewarded_idx": [
+      56,
+      117,
+      10,
+      138,
+      3
+    ],
+    "long_but_low_reward_idx": [
+      1,
+      4,
+      8,
+      33,
+      35
+    ]
+  }
+}

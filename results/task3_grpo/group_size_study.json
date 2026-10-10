@@ -1,0 +1,119 @@
+{
+  "config": "configs/grpo.yaml",
+  "n_prompts": 24,
+  "cache_group_size": 8,
+  "reward_field": "reward",
+  "advantage_source": "local reconstruction (r-mu)/(sigma+eps), additive eps, NOT grpo.py",
+  "advantage_eps": 1e-06,
+  "group_std_tolerance": 1e-06,
+  "group_sizes": [
+    2,
+    4,
+    8
+  ],
+  "difficulty_rule": "per-prompt mean cached reward over its 8 completions, split into terciles (hard/medium/easy) by the 33.3/66.7 percentiles across all cached prompts",
+  "difficulty_edges": {
+    "q_low": 1.3125813802083335,
+    "q_high": 2.4212239583333335
+  },
+  "difficulty_bin_counts": {
+    "hard": 8,
+    "medium": 8,
+    "easy": 8
+  },
+  "overall": {
+    "2": {
+      "n_groups": 96,
+      "total_generations": 192,
+      "informative_group_fraction": 0.9375,
+      "mean_within_group_reward_std": 0.3845672607421875,
+      "group_relative_signal_variance": 0.9374814117154214
+    },
+    "4": {
+      "n_groups": 48,
+      "total_generations": 192,
+      "informative_group_fraction": 0.9583333333333334,
+      "mean_within_group_reward_std": 0.5410043663966159,
+      "group_relative_signal_variance": 0.9583276057940306
+    },
+    "8": {
+      "n_groups": 24,
+      "total_generations": 192,
+      "informative_group_fraction": 0.9583333333333334,
+      "mean_within_group_reward_std": 0.619054414331913,
+      "group_relative_signal_variance": 0.9583290636625043
+    }
+  },
+  "by_difficulty": {
+    "2": {
+      "hard": {
+        "n_groups": 32,
+        "total_generations": 64,
+        "informative_group_fraction": 0.84375,
+        "mean_within_group_reward_std": 0.49340057373046875,
+        "group_relative_signal_variance": 0.8437429704090508
+      },
+      "medium": {
+        "n_groups": 32,
+        "total_generations": 64,
+        "informative_group_fraction": 0.96875,
+        "mean_within_group_reward_std": 0.41237640380859375,
+        "group_relative_signal_variance": 0.9687324469914853
+      },
+      "easy": {
+        "n_groups": 32,
+        "total_generations": 64,
+        "informative_group_fraction": 1.0,
+        "mean_within_group_reward_std": 0.2479248046875,
+        "group_relative_signal_variance": 0.9999688177457285
+      }
+    },
+    "4": {
+      "hard": {
+        "n_groups": 16,
+        "total_generations": 64,
+        "informative_group_fraction": 0.875,
+        "mean_within_group_reward_std": 0.6614877581596375,
+        "group_relative_signal_variance": 0.8749959542057824
+      },
+      "medium": {
+        "n_groups": 16,
+        "total_generations": 64,
+        "informative_group_fraction": 1.0,
+        "mean_within_group_reward_std": 0.5516941300593317,
+        "group_relative_signal_variance": 0.9999937655649884
+      },
+      "easy": {
+        "n_groups": 16,
+        "total_generations": 64,
+        "informative_group_fraction": 1.0,
+        "mean_within_group_reward_std": 0.4098312109708786,
+        "group_relative_signal_variance": 0.9999930976113216
+      }
+    },
+    "8": {
+      "hard": {
+        "n_groups": 8,
+        "total_generations": 64,
+        "informative_group_fraction": 0.875,
+        "mean_within_group_reward_std": 0.7633688487112522,
+        "group_relative_signal_variance": 0.8749973728033363
+      },
+      "medium": {
+        "n_groups": 8,
+        "total_generations": 64,
+        "informative_group_fraction": 1.0,
+        "mean_within_group_reward_std": 0.5990220718085766,
+        "group_relative_signal_variance": 0.9999956106586684
+      },
+      "easy": {
+        "n_groups": 8,
+        "total_generations": 64,
+        "informative_group_fraction": 1.0,
+        "mean_within_group_reward_std": 0.4947723224759102,
+        "group_relative_signal_variance": 0.999994207525508
+      }
+    }
+  },
+  "equal_generation_note": "every k uses all 8 cached completions per prompt; total_generations is identical across k (= n_prompts * 8), only the group size and group count change."
+}

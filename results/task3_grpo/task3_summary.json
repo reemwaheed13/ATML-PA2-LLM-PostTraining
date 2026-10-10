@@ -1,0 +1,549 @@
+{
+  "standard_summary": {
+    "run_name": "standard",
+    "loss_type": "grpo",
+    "output": "/content/drive/MyDrive/ATML-PA2/ATML-PA2-LLM-PostTraining/outputs/task3_grpo/standard",
+    "updates": 20,
+    "policy_epochs": 1,
+    "num_generations": 4,
+    "clip_epsilon": 0.2,
+    "kl_beta": 0.1,
+    "wall_seconds": 384.9934514880006,
+    "peak_vram_gb": 8.943951872,
+    "kl_convention": "sampled_per_token_mean(sum_tokens/sum_response_tokens)",
+    "precision": "base_fp16+lora_fp32_peft_native+autocast_fp16+gradscaler"
+  },
+  "standard_summary_row": {
+    "updates": 20,
+    "num_generations": 4,
+    "wall_seconds": 384.9934514880006,
+    "peak_vram_gb": 8.943951872,
+    "reward_first": 1.1632843017578125,
+    "reward_last": 0.0784912109375,
+    "kl_first": -9.973481792258099e-05,
+    "kl_last": 0.0001090983787435107,
+    "entropy_first": 0.7332061529159546,
+    "entropy_last": 0.5479550957679749,
+    "length_first": 456.75,
+    "length_last": 15.75,
+    "within_group_std_mean": 0.6872760960832238,
+    "uninformative_group_fraction_mean": 0.0,
+    "mean_clip_fraction": 0.0,
+    "n_updates_step_skipped": 0
+  },
+  "stability_statistic": "policy_term_std_over_updates",
+  "kl_convention": "sampled_per_token_mean(sum_tokens/sum_response_tokens)",
+  "continuation_trajectory": [
+    {
+      "update": 0,
+      "reward_mean": 1.1632843017578125,
+      "within_group_reward_std": 0.8647153377532959,
+      "uninformative_group_fraction": 0.0,
+      "kl_sampled": -9.973481792258099e-05,
+      "kl_penalty_k3": 1.1456190804892685e-05,
+      "response_length_mean": 456.75,
+      "policy_term": -0.4681524634361267,
+      "entropy": 0.7332061529159546,
+      "clip_fraction": 0.0,
+      "ratio_mean": 1.0003117322921753,
+      "grad_norm": 0.09366635978221893,
+      "any_step_skipped": false
+    },
+    {
+      "update": 1,
+      "reward_mean": 2.485595703125,
+      "within_group_reward_std": 0.3471575677394867,
+      "uninformative_group_fraction": 0.0,
+      "kl_sampled": 8.835415428620763e-06,
+      "kl_penalty_k3": 1.224254083354026e-05,
+      "response_length_mean": 317.75,
+      "policy_term": -0.00014910101890563965,
+      "entropy": 0.9331154823303223,
+      "clip_fraction": 0.0,
+      "ratio_mean": 1.0001249313354492,
+      "grad_norm": 0.1765870302915573,
+      "any_step_skipped": false
+    },
+    {
+      "update": 2,
+      "reward_mean": 0.7249755859375,
+      "within_group_reward_std": 1.3871970176696777,
+      "uninformative_group_fraction": 0.0,
+      "kl_sampled": 2.535717430873774e-05,
+      "kl_penalty_k3": 1.3807763025397435e-05,
+      "response_length_mean": 223.0,
+      "policy_term": -0.00033114850521087646,
+      "entropy": 0.8484265804290771,
+      "clip_fraction": 0.0,
+      "ratio_mean": 0.9999495148658752,
+      "grad_norm": 0.6828844547271729,
+      "any_step_skipped": false
+    },
+    {
+      "update": 3,
+      "reward_mean": 1.5299072265625,
+      "within_group_reward_std": 0.5154135823249817,
+      "uninformative_group_fraction": 0.0,
+      "kl_sampled": 5.575252362177707e-05,
+      "kl_penalty_k3": 1.6916072127060033e-05,
+      "response_length_mean": 65.25,
+      "policy_term": -0.0004119575023651123,
+      "entropy": 1.1089776754379272,
+      "clip_fraction": 0.0,
+      "ratio_mean": 0.9996328353881836,
+      "grad_norm": 1.0305536985397339,
+      "any_step_skipped": false
+    },
+    {
+      "update": 4,
+      "reward_mean": 0.9590544700622559,
+      "within_group_reward_std": 1.127466082572937,
+      "uninformative_group_fraction": 0.0,
+      "kl_sampled": 8.679241000209004e-05,
+      "kl_penalty_k3": 0.0,
+      "response_length_mean": 512.0,
+      "policy_term": 0.0,
+      "entropy": 0.0,
+      "clip_fraction": 0.0,
+      "ratio_mean": 0.0,
+      "grad_norm": 0.0,
+      "any_step_skipped": false
+    },
+    {
+      "update": 5,
+      "reward_mean": 2.5595703125,
+      "within_group_reward_std": 0.6560007333755493,
+      "uninformative_group_fraction": 0.0,
+      "kl_sampled": 0.00033140950836241245,
+      "kl_penalty_k3": 1.1373557754268404e-05,
+      "response_length_mean": 294.5,
+      "policy_term": -0.00016266107559204102,
+      "entropy": 0.9863462448120117,
+      "clip_fraction": 0.0,
+      "ratio_mean": 0.9998782277107239,
+      "grad_norm": 0.1586037427186966,
+      "any_step_skipped": false
+    },
+    {
+      "update": 6,
+      "reward_mean": -1.0059814453125,
+      "within_group_reward_std": 0.9638209342956543,
+      "uninformative_group_fraction": 0.0,
+      "kl_sampled": 0.00011205461487406865,
+      "kl_penalty_k3": 1.4235372873372398e-05,
+      "response_length_mean": 122.0,
+      "policy_term": -0.00013881921768188477,
+      "entropy": 0.648375928401947,
+      "clip_fraction": 0.0,
+      "ratio_mean": 0.9998706579208374,
+      "grad_norm": 0.44914868474006653,
+      "any_step_skipped": false
+    },
+    {
+      "update": 7,
+      "reward_mean": 1.328125,
+      "within_group_reward_std": 0.2740897834300995,
+      "uninformative_group_fraction": 0.0,
+      "kl_sampled": 9.957113798009232e-05,
+      "kl_penalty_k3": 8.401594641327392e-06,
+      "response_length_mean": 347.25,
+      "policy_term": -2.6285648345947266e-05,
+      "entropy": 0.37721365690231323,
+      "clip_fraction": 0.0,
+      "ratio_mean": 1.0001318454742432,
+      "grad_norm": 0.10698504745960236,
+      "any_step_skipped": false
+    },
+    {
+      "update": 8,
+      "reward_mean": 1.7490234375,
+      "within_group_reward_std": 0.19509997963905334,
+      "uninformative_group_fraction": 0.0,
+      "kl_sampled": 0.00039770393050275743,
+      "kl_penalty_k3": 1.425164555257652e-05,
+      "response_length_mean": 170.0,
+      "policy_term": 0.00023061037063598633,
+      "entropy": 1.0268253087997437,
+      "clip_fraction": 0.0,
+      "ratio_mean": 0.9999219179153442,
+      "grad_norm": 0.2533397674560547,
+      "any_step_skipped": false
+    },
+    {
+      "update": 9,
+      "reward_mean": 1.869873046875,
+      "within_group_reward_std": 0.4057070016860962,
+      "uninformative_group_fraction": 0.0,
+      "kl_sampled": 8.464473648928106e-05,
+      "kl_penalty_k3": 1.0365247362642549e-05,
+      "response_length_mean": 125.0,
+      "policy_term": 0.00018513202667236328,
+      "entropy": 0.5128324031829834,
+      "clip_fraction": 0.0,
+      "ratio_mean": 0.9999797344207764,
+      "grad_norm": 0.20661307871341705,
+      "any_step_skipped": false
+    },
+    {
+      "update": 10,
+      "reward_mean": 2.70947265625,
+      "within_group_reward_std": 0.04315422847867012,
+      "uninformative_group_fraction": 0.0,
+      "kl_sampled": 0.000201863469555974,
+      "kl_penalty_k3": 5.778990271210205e-06,
+      "response_length_mean": 235.25,
+      "policy_term": 1.1265277862548828e-05,
+      "entropy": 0.2810114622116089,
+      "clip_fraction": 0.0,
+      "ratio_mean": 1.0000327825546265,
+      "grad_norm": 0.09635240584611893,
+      "any_step_skipped": false
+    },
+    {
+      "update": 11,
+      "reward_mean": 2.51513671875,
+      "within_group_reward_std": 0.14994210004806519,
+      "uninformative_group_fraction": 0.0,
+      "kl_sampled": 0.0003769850009121001,
+      "kl_penalty_k3": 1.4567633115802892e-05,
+      "response_length_mean": 369.75,
+      "policy_term": -0.00016617774963378906,
+      "entropy": 0.919026792049408,
+      "clip_fraction": 0.0,
+      "ratio_mean": 0.9998831152915955,
+      "grad_norm": 0.14596256613731384,
+      "any_step_skipped": false
+    },
+    {
+      "update": 12,
+      "reward_mean": 1.979248046875,
+      "within_group_reward_std": 0.49764811992645264,
+      "uninformative_group_fraction": 0.0,
+      "kl_sampled": 0.00023255312407854944,
+      "kl_penalty_k3": 0.0,
+      "response_length_mean": 512.0,
+      "policy_term": 0.0,
+      "entropy": 0.0,
+      "clip_fraction": 0.0,
+      "ratio_mean": 0.0,
+      "grad_norm": 0.0,
+      "any_step_skipped": false
+    },
+    {
+      "update": 13,
+      "reward_mean": 2.81396484375,
+      "within_group_reward_std": 0.3039585053920746,
+      "uninformative_group_fraction": 0.0,
+      "kl_sampled": -6.453581590903923e-05,
+      "kl_penalty_k3": 1.544404585729353e-05,
+      "response_length_mean": 414.0,
+      "policy_term": 2.8252601623535156e-05,
+      "entropy": 1.1847684383392334,
+      "clip_fraction": 0.0,
+      "ratio_mean": 1.0002636909484863,
+      "grad_norm": 0.1301368623971939,
+      "any_step_skipped": false
+    },
+    {
+      "update": 14,
+      "reward_mean": 0.09423065185546875,
+      "within_group_reward_std": 0.7123032808303833,
+      "uninformative_group_fraction": 0.0,
+      "kl_sampled": 9.181111090583727e-05,
+      "kl_penalty_k3": 0.0,
+      "response_length_mean": 512.0,
+      "policy_term": 0.0,
+      "entropy": 0.0,
+      "clip_fraction": 0.0,
+      "ratio_mean": 0.0,
+      "grad_norm": 0.0,
+      "any_step_skipped": false
+    },
+    {
+      "update": 15,
+      "reward_mean": -0.625335693359375,
+      "within_group_reward_std": 0.2847452759742737,
+      "uninformative_group_fraction": 0.0,
+      "kl_sampled": 1.8248078049509786e-05,
+      "kl_penalty_k3": 1.7628201021580026e-05,
+      "response_length_mean": 294.5,
+      "policy_term": 3.1113624572753906e-05,
+      "entropy": 1.856600284576416,
+      "clip_fraction": 0.0,
+      "ratio_mean": 1.0003081560134888,
+      "grad_norm": 0.15241751074790955,
+      "any_step_skipped": false
+    },
+    {
+      "update": 16,
+      "reward_mean": 1.979248046875,
+      "within_group_reward_std": 0.6414850354194641,
+      "uninformative_group_fraction": 0.0,
+      "kl_sampled": 0.00021435356757137924,
+      "kl_penalty_k3": 1.0704029591579456e-05,
+      "response_length_mean": 472.25,
+      "policy_term": -0.1960858553647995,
+      "entropy": 0.5443016886711121,
+      "clip_fraction": 0.0,
+      "ratio_mean": 0.9996836185455322,
+      "grad_norm": 0.12138745933771133,
+      "any_step_skipped": false
+    },
+    {
+      "update": 17,
+      "reward_mean": 1.923828125,
+      "within_group_reward_std": 0.13633981347084045,
+      "uninformative_group_fraction": 0.0,
+      "kl_sampled": 0.0001535675546620041,
+      "kl_penalty_k3": 1.5525023627560586e-05,
+      "response_length_mean": 90.0,
+      "policy_term": 0.00014066696166992188,
+      "entropy": 1.0651713609695435,
+      "clip_fraction": 0.0,
+      "ratio_mean": 1.000244379043579,
+      "grad_norm": 0.48224231600761414,
+      "any_step_skipped": false
+    },
+    {
+      "update": 18,
+      "reward_mean": -3.9140625,
+      "within_group_reward_std": 3.8639438152313232,
+      "uninformative_group_fraction": 0.0,
+      "kl_sampled": 0.00018342655675951391,
+      "kl_penalty_k3": 1.6085392417153344e-05,
+      "response_length_mean": 323.25,
+      "policy_term": -0.22306117415428162,
+      "entropy": 1.4667518138885498,
+      "clip_fraction": 0.0,
+      "ratio_mean": 0.9999477863311768,
+      "grad_norm": 0.16104979813098907,
+      "any_step_skipped": false
+    },
+    {
+      "update": 19,
+      "reward_mean": 0.0784912109375,
+      "within_group_reward_std": 0.3753337264060974,
+      "uninformative_group_fraction": 0.0,
+      "kl_sampled": 0.0001090983787435107,
+      "kl_penalty_k3": 8.318159416376147e-06,
+      "response_length_mean": 15.75,
+      "policy_term": 0.0008985698223114014,
+      "entropy": 0.5479550957679749,
+      "clip_fraction": 0.0,
+      "ratio_mean": 0.999406099319458,
+      "grad_norm": 0.7467474341392517,
+      "any_step_skipped": false
+    }
+  ],
+  "group_size_study": {
+    "config": "configs/grpo.yaml",
+    "n_prompts": 24,
+    "cache_group_size": 8,
+    "reward_field": "reward",
+    "advantage_source": "local reconstruction (r-mu)/(sigma+eps), additive eps, NOT grpo.py",
+    "advantage_eps": 1e-06,
+    "group_std_tolerance": 1e-06,
+    "group_sizes": [
+      2,
+      4,
+      8
+    ],
+    "difficulty_rule": "per-prompt mean cached reward over its 8 completions, split into terciles (hard/medium/easy) by the 33.3/66.7 percentiles across all cached prompts",
+    "difficulty_edges": {
+      "q_low": 1.3125813802083335,
+      "q_high": 2.4212239583333335
+    },
+    "difficulty_bin_counts": {
+      "hard": 8,
+      "medium": 8,
+      "easy": 8
+    },
+    "overall": {
+      "2": {
+        "n_groups": 96,
+        "total_generations": 192,
+        "informative_group_fraction": 0.9375,
+        "mean_within_group_reward_std": 0.3845672607421875,
+        "group_relative_signal_variance": 0.9374814117154214
+      },
+      "4": {
+        "n_groups": 48,
+        "total_generations": 192,
+        "informative_group_fraction": 0.9583333333333334,
+        "mean_within_group_reward_std": 0.5410043663966159,
+        "group_relative_signal_variance": 0.9583276057940306
+      },
+      "8": {
+        "n_groups": 24,
+        "total_generations": 192,
+        "informative_group_fraction": 0.9583333333333334,
+        "mean_within_group_reward_std": 0.619054414331913,
+        "group_relative_signal_variance": 0.9583290636625043
+      }
+    },
+    "by_difficulty": {
+      "2": {
+        "hard": {
+          "n_groups": 32,
+          "total_generations": 64,
+          "informative_group_fraction": 0.84375,
+          "mean_within_group_reward_std": 0.49340057373046875,
+          "group_relative_signal_variance": 0.8437429704090508
+        },
+        "medium": {
+          "n_groups": 32,
+          "total_generations": 64,
+          "informative_group_fraction": 0.96875,
+          "mean_within_group_reward_std": 0.41237640380859375,
+          "group_relative_signal_variance": 0.9687324469914853
+        },
+        "easy": {
+          "n_groups": 32,
+          "total_generations": 64,
+          "informative_group_fraction": 1.0,
+          "mean_within_group_reward_std": 0.2479248046875,
+          "group_relative_signal_variance": 0.9999688177457285
+        }
+      },
+      "4": {
+        "hard": {
+          "n_groups": 16,
+          "total_generations": 64,
+          "informative_group_fraction": 0.875,
+          "mean_within_group_reward_std": 0.6614877581596375,
+          "group_relative_signal_variance": 0.8749959542057824
+        },
+        "medium": {
+          "n_groups": 16,
+          "total_generations": 64,
+          "informative_group_fraction": 1.0,
+          "mean_within_group_reward_std": 0.5516941300593317,
+          "group_relative_signal_variance": 0.9999937655649884
+        },
+        "easy": {
+          "n_groups": 16,
+          "total_generations": 64,
+          "informative_group_fraction": 1.0,
+          "mean_within_group_reward_std": 0.4098312109708786,
+          "group_relative_signal_variance": 0.9999930976113216
+        }
+      },
+      "8": {
+        "hard": {
+          "n_groups": 8,
+          "total_generations": 64,
+          "informative_group_fraction": 0.875,
+          "mean_within_group_reward_std": 0.7633688487112522,
+          "group_relative_signal_variance": 0.8749973728033363
+        },
+        "medium": {
+          "n_groups": 8,
+          "total_generations": 64,
+          "informative_group_fraction": 1.0,
+          "mean_within_group_reward_std": 0.5990220718085766,
+          "group_relative_signal_variance": 0.9999956106586684
+        },
+        "easy": {
+          "n_groups": 8,
+          "total_generations": 64,
+          "informative_group_fraction": 1.0,
+          "mean_within_group_reward_std": 0.4947723224759102,
+          "group_relative_signal_variance": 0.999994207525508
+        }
+      }
+    },
+    "equal_generation_note": "every k uses all 8 cached completions per prompt; total_generations is identical across k (= n_prompts * 8), only the group size and group count change."
+  },
+  "normalization_table": [
+    {
+      "loss_type": "grpo",
+      "fork": "norm_grpo",
+      "policy_term_std_over_updates": 0.19059288023564913,
+      "heldout_reward_mean": 1.5142258071899415,
+      "heldout_reward_std": 1.5348705326079521,
+      "heldout_kl_sampled": 8.457573789155477e-05,
+      "heldout_length_mean": 290.23,
+      "heldout_length_std": 253.78748412796088,
+      "heldout_length_iqr": 435.75,
+      "heldout_entropy_mean": 0.5696095249196514,
+      "diag_corr_length_vs_per_sequence_grad": 0.05444825120362459,
+      "diag_per_sequence_grad_long_over_short": 1.0430857121914114,
+      "diag_per_token_grad_long_over_short": 0.04075595807301473,
+      "diag_is_analytic_illustration": true
+    },
+    {
+      "loss_type": "dr_grpo",
+      "fork": "norm_dr_grpo",
+      "policy_term_std_over_updates": 0.14799952827037088,
+      "heldout_reward_mean": 1.4883914184570313,
+      "heldout_reward_std": 1.5614024560796158,
+      "heldout_kl_sampled": 0.0001746148963889715,
+      "heldout_length_mean": 291.655,
+      "heldout_length_std": 254.10060207524106,
+      "heldout_length_iqr": 438.25,
+      "heldout_entropy_mean": 0.5633939941879362,
+      "diag_corr_length_vs_per_sequence_grad": 0.7284477528038139,
+      "diag_per_sequence_grad_long_over_short": 8.835584082973684,
+      "diag_per_token_grad_long_over_short": 1.0430857121914114,
+      "diag_is_analytic_illustration": true
+    }
+  ],
+  "normalization_diagnostic": {
+    "config": "configs/grpo.yaml",
+    "analytic_illustration": true,
+    "caveat": "ANALYTIC ILLUSTRATION, not a measurement of the norm_grpo/norm_dr_grpo runs. The fixed K-cache was generated by a different policy snapshot; this shows what the two normalizers do to a fixed completion-length distribution, not gradient data from the actual forks (those give held-out reward/KL/length via task3_grpo.evaluate).",
+    "fixed_completion_source": "cached/grpo_k_cache.jsonl",
+    "advantage_source": "local reconstruction (r-mu)/(sigma+eps), additive eps, NOT grpo.py",
+    "group_size_k": 4,
+    "advantage_eps": 1e-06,
+    "group_std_tolerance": 1e-06,
+    "degenerate_groups_excluded": 2,
+    "n_groups_total": 48,
+    "n_completions_total": 192,
+    "n_completions_used": 184,
+    "n_clipped_completions_used": 29,
+    "clipped_inclusion_note": "clipped_at_max completions ARE included. Step 1 masks max-length completions from the TRAINING loss; this diagnostic is an analytic illustration of the normalization's length-weighting across the realized length distribution, and the long/clipped tail is exactly where the two normalizers differ most, so excluding it would blunt the contrast.",
+    "dr_grpo_normalizer_L_max": 768.0,
+    "L_max_note": "cancels in every correlation and long/short ratio; only rescales absolute means.",
+    "length_stats": {
+      "mean": 413.3152173913044,
+      "std": 275.66744810068536,
+      "min": 10.0,
+      "max": 768.0,
+      "p33": 271.0,
+      "p67": 617.0
+    },
+    "gradient_model": "first-order (ratio rho=1) GRPO gradient magnitude placed on response k: per token |A_k|/denom_k, per sequence |A_k|*T_k/denom_k; denom_k=T_k (canonical) or L_max (Dr. GRPO). Exact at the epoch-0 ratio used by our 1-epoch updates.",
+    "per_normalization": {
+      "grpo": {
+        "mean_per_token_grad": 0.010832772929180001,
+        "mean_per_sequence_grad": 0.8668341288474671,
+        "corr_length_vs_per_token_grad": -0.5573862458130847,
+        "corr_length_vs_per_sequence_grad": 0.05444825120362459,
+        "per_token_grad_short_tercile_mean": 0.0288259241552588,
+        "per_token_grad_long_tercile_mean": 0.0011748281562876301,
+        "per_token_grad_long_over_short": 0.04075595807301473,
+        "per_sequence_grad_short_tercile_mean": 0.8389742050410038,
+        "per_sequence_grad_long_tercile_mean": 0.8751220061754187,
+        "per_sequence_grad_long_over_short": 1.0430857121914114
+      },
+      "dr_grpo": {
+        "mean_per_token_grad": 0.0011286902719368063,
+        "mean_per_sequence_grad": 0.476249202534126,
+        "corr_length_vs_per_token_grad": 0.054448251203624634,
+        "corr_length_vs_per_sequence_grad": 0.7284477528038139,
+        "per_token_grad_short_tercile_mean": 0.0010924143294804738,
+        "per_token_grad_long_tercile_mean": 0.0011394817788742432,
+        "per_token_grad_long_over_short": 1.0430857121914114,
+        "per_sequence_grad_short_tercile_mean": 0.09635600920302498,
+        "per_sequence_grad_long_tercile_mean": 0.8513616212131133,
+        "per_sequence_grad_long_over_short": 8.835584082973684
+      }
+    },
+    "interpretation_keys": {
+      "per_token_grad_long_over_short": "canonical << 1 (long down-weighted); dr_grpo ~ 1",
+      "per_sequence_grad_long_over_short": "canonical ~ 1 (length-independent); dr_grpo > 1 (favors long)",
+      "corr_length_vs_per_sequence_grad": "canonical ~ 0; dr_grpo > 0"
+    }
+  }
+}

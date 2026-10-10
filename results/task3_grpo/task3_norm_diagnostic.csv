@@ -1,0 +1,4 @@
+"# ANALYTIC ILLUSTRATION on fixed K-cache (n_completions_used=184, 2 degenerate groups excluded); NOT gradient data from the norm_grpo/norm_dr_grpo runs"
+normalization,mean_per_token_grad,mean_per_sequence_grad,corr_length_vs_per_token_grad,corr_length_vs_per_sequence_grad,per_token_grad_long_over_short,per_sequence_grad_long_over_short
+grpo,0.010833,0.866834,-0.557386,0.054448,0.040756,1.043086
+dr_grpo,0.001129,0.476249,0.054448,0.728448,1.043086,8.835584

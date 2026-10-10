@@ -1,0 +1,14 @@
+{
+  "run_name": "norm_grpo",
+  "loss_type": "grpo",
+  "output": "/content/drive/MyDrive/ATML-PA2/ATML-PA2-LLM-PostTraining/outputs/task3_grpo/norm_grpo",
+  "updates": 8,
+  "policy_epochs": 1,
+  "num_generations": 4,
+  "clip_epsilon": 0.2,
+  "kl_beta": 0.1,
+  "wall_seconds": 152.43034939399877,
+  "peak_vram_gb": 8.89519104,
+  "kl_convention": "sampled_per_token_mean(sum_tokens/sum_response_tokens)",
+  "precision": "base_fp16+lora_fp32_peft_native+autocast_fp16+gradscaler"
+}
