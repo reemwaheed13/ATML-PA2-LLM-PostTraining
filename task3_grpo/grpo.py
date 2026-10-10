@@ -12,15 +12,19 @@ def group_relative_advantages(rewards: torch.Tensor, group_ids: torch.Tensor, ep
     Validate this implementation against the group-relative definition in the assignment manual.
     """
     # Group-relative: standardize WITHIN each prompt's group of completions, using
-    # group_ids. (The released code normalized globally and ignored group_ids.)
+    # group_ids. (The released code normalized globally and ignored group_ids -- the planted
+    # defect, fixed here and checked by scripts/verify_grpo_groups.py.) Denominator is the
+    # manual's ADDITIVE form sigma_r + eps (population std + eps), matching A_k = (r_k - mu_r)/
+    # (sigma_r + eps) exactly, rather than clamp_min(sigma, eps); for a degenerate group the
+    # numerator is 0 so the advantage is 0 regardless.
     group_ids = torch.as_tensor(group_ids, device=rewards.device)
     advantages = torch.zeros_like(rewards)
     for g in torch.unique(group_ids):
         m = group_ids == g
         r = rewards[m]
         mean = r.mean()
-        std = r.std(unbiased=False).clamp_min(eps)
-        advantages[m] = (r - mean) / std
+        std = r.std(unbiased=False)
+        advantages[m] = (r - mean) / (std + eps)
     return advantages
 
 
