@@ -35,7 +35,7 @@ CACHE_GROUP_SIZE = 8          # completions per prompt in the supplied K-cache (
 REWARD_KEY = "reward"         # scalar RM reward per completion (confirmed cache field)
 COMPLETION_TOKENS_KEY = "completion_tokens"  # response length in tokens (confirmed cache field)
 REQUIRED_KEYS = ("source_index", "prompt_id", "generation_index",
-                 COMPLETION_TOKENS_KEY, REWARD_KEY)
+                 COMPLETION_TOKENS_KEY, REWARD_KEY, "clipped_at_max")
 
 # Difficulty binning rule, defined ONCE (manual: "Define the binning rule once"): a prompt's
 # difficulty proxy is the mean cached reward over its 8 completions; prompts are split into
