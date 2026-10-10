@@ -328,6 +328,36 @@ def _cached_len(row, key):
     return int(_as1d(v).numel()) if v is not None else None
 
 
+def _require_len(named_tensors, T, row):
+    """Permanent guard for the per-token RATIO inputs: every (name, tensor) must be 1-D with
+    exactly T elements. Raise with every shape/length rather than min() them together -- the
+    original bug was a silent min() that truncated a T-token response to its first token."""
+    report = {name: (tuple(t.shape), int(t.numel())) for name, t in named_tensors}
+    bad = [name for name, t in named_tensors if t.dim() != 1 or int(t.numel()) != T]
+    if bad:
+        raise ValueError(
+            f"per-token ratio inputs must all be 1-D length T={T} (row "
+            f"source_index={row.get('source_index')!r} prompt_id={row.get('prompt_id')!r}); "
+            f"offenders={bad}; (shape, numel) per input = {report}"
+        )
+
+
+def _require_bt(named_tensors, T, row):
+    """Permanent guard for the compute_gae inputs: every (name, tensor) must be exactly 2-D of
+    shape [1, T]. compute_gae unpacks batch,steps = rewards.shape (ppo.py:14) and indexes
+    rewards/values/mask as [:, t] (ppo.py:19-27), so a 1-D tensor arriving here surfaces as an
+    IndexError (e.g. a T==1 response whose values got squeezed to 0-d then unsqueezed to [1]).
+    Raise with ALL three shapes instead of guessing."""
+    report = {name: tuple(t.shape) for name, t in named_tensors}
+    bad = [name for name, t in named_tensors if t.dim() != 2 or tuple(t.shape) != (1, T)]
+    if bad:
+        raise ValueError(
+            f"compute_gae inputs must all be [1, T={T}] (row "
+            f"source_index={row.get('source_index')!r} prompt_id={row.get('prompt_id')!r}); "
+            f"offenders={bad}; shapes = {report}"
+        )
+
+
 def cached_clip_study(cfg, out_path):
     rows = load_cached_rollouts(cfg["cached_rollouts"])
     eps_values = [float(e) for e in cfg["clip_values"]]
@@ -369,36 +399,38 @@ def cached_clip_study(cfg, out_path):
     ratios_all, adv_all = [], []
     recon_sources, term_fields_used, penalty_modes = set(), set(), set()
     resp_counts = []
+    printed_row0 = False
 
     for row in rows:
         seq, attn, pw, resp, recon_src = _reconstruct(row, tokenizer, resolve_prompt)
         recon_sources.add(recon_src)
         seq_d, attn_d, resp_d = seq.to(device), attn.to(device), resp.to(device)
-        resp_count = int(resp.shape[1])
-        resp_counts.append(resp_count)
+        # T = the response token count for THIS row. _reconstruct returns resp as [1, T].
+        T = int(resp.shape[1])
+        resp_counts.append(T)
 
+        # Normalize every recomputed per-token quantity to 1-D [T] with _as1d (which .flatten()s,
+        # so it NEVER collapses a length-1 response to a 0-d scalar the way [0].squeeze(0) did --
+        # that collapse is what made a 1-D tensor reach compute_gae's [:, t] index). token_logprobs
+        # returns (chosen[B,T], logits); _response_values returns [B, T].
         with torch.no_grad():
-            old_logp = token_logprobs(midpoint, seq_d, attn_d, pw, resp_d, cfg)[0].squeeze(0).detach().cpu().float()
-            new_logp = token_logprobs(standard, seq_d, attn_d, pw, resp_d, cfg)[0].squeeze(0).detach().cpu().float()
+            old_logp = _as1d(token_logprobs(midpoint, seq_d, attn_d, pw, resp_d, cfg)[0])
+            new_logp = _as1d(token_logprobs(standard, seq_d, attn_d, pw, resp_d, cfg)[0])
             with reference_mode(midpoint):
-                ref_logp = token_logprobs(midpoint, seq_d, attn_d, pw, resp_d, cfg)[0].squeeze(0).detach().cpu().float()
-            values = _response_values(value_model, seq_d, attn_d, pw, resp_count, cfg)[0].squeeze(0).detach().cpu().float()
+                ref_logp = _as1d(token_logprobs(midpoint, seq_d, attn_d, pw, resp_d, cfg)[0])
+            values = _as1d(_response_values(value_model, seq_d, attn_d, pw, T, cfg))
 
-        # FAIL LOUD on any length mismatch among the recomputed per-token arrays. A silent min()
-        # that reduced a G-token response to its first token is exactly how a 1.0 clip fraction at
-        # every epsilon went unnoticed; raise with both lengths rather than truncate.
-        for name, arr in (("old_logp(midpoint)", old_logp), ("new_logp(standard)", new_logp),
-                          ("ref_logp(midpoint/ref)", ref_logp), ("values(midpoint critic)", values)):
-            if int(arr.numel()) != resp_count:
-                raise ValueError(
-                    f"recomputed '{name}' length {int(arr.numel())} != response token count "
-                    f"{resp_count} (row source_index={row.get('source_index')!r} "
-                    f"prompt_id={row.get('prompt_id')!r}); tokenization is misaligned -- fix "
-                    f"reconstruction before trusting any ratio or advantage."
-                )
+        mask = torch.ones(T)
 
-        n = resp_count
-        mask = torch.ones(n)
+        if not printed_row0:
+            print(f"[clip-study] row0 T(resp_count)={T}; 1-D shapes "
+                  f"old_logp={tuple(old_logp.shape)} new_logp={tuple(new_logp.shape)} "
+                  f"ref_logp={tuple(ref_logp.shape)} values={tuple(values.shape)}")
+            printed_row0 = True
+
+        # RATIO guard (per-token): all 1-D length T, or raise -- never min() them together.
+        _require_len([("new_logp", new_logp), ("old_logp", old_logp), ("ref_logp", ref_logp),
+                      ("values", values), ("mask", mask)], T, row)
         ratio = torch.exp(new_logp - old_logp)
 
         terminal_scalar, term_k, penalty_mode = _terminal_scalar(row, missing_eos_penalty)
@@ -406,12 +438,17 @@ def cached_clip_study(cfg, out_path):
         penalty_modes.add(penalty_mode)
         terminal = torch.tensor([terminal_scalar], dtype=torch.float32)
 
-        # Rebuild per-token rewards and advantages exactly as continue_train does.
-        rewards = shaped_rewards(terminal, old_logp.unsqueeze(0), ref_logp.unsqueeze(0), mask.unsqueeze(0), kl_beta)
-        adv, _ = compute_gae(rewards, values.unsqueeze(0), mask.unsqueeze(0), gamma, lam)
+        # Build [1, T] deterministically from the normalized 1-D arrays (reshape, not a blind
+        # unsqueeze that can mint a 3-D or leave a 1-D), then rebuild rewards/advantages exactly
+        # as continue_train does.
+        old2, ref2, val2, mask2 = (x.reshape(1, T) for x in (old_logp, ref_logp, values, mask))
+        rewards = shaped_rewards(terminal, old2, ref2, mask2, kl_beta)
+        # GAE guard: rewards, values, mask all [1, T], or raise with all three shapes.
+        _require_bt([("rewards", rewards), ("values", val2), ("mask", mask2)], T, row)
+        adv, _ = compute_gae(rewards, val2, mask2, gamma, lam)
 
         ratios_all.append(ratio)
-        adv_all.append(adv.squeeze(0))
+        adv_all.append(_as1d(adv))
 
     ratios = torch.cat(ratios_all)
     advs = torch.cat(adv_all)
