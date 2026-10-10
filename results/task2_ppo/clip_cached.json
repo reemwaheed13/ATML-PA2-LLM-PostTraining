@@ -1,20 +1,59 @@
 {
   "study": "cached_clip",
   "n_rows": 32,
-  "n_valid_tokens": 32,
-  "advantage_source": [
-    "reconstructed:gae(shaped_rewards(effective_terminal_reward[prefolded],old,ref,kl_beta),values)"
-  ],
-  "mask_source": [
-    "derived:ones(len(old_logprobs))"
-  ],
+  "n_valid_tokens": 8814,
+  "response_token_count": {
+    "min": 2,
+    "max": 512,
+    "total": 8814
+  },
   "reconstruction_source": [
-    "text:cached_resp_ids|prompt=train:positional via cache.source_index"
+    "text:retokenized|prompt=train:positional via cache.source_index"
   ],
   "prompt_resolution": {
     "pool_strategy": "train:positional via cache.source_index"
   },
-  "alignment": "per row: min(len(new_logp), len(old_logprobs)); ratio=exp(new-old)",
+  "policies": {
+    "old_logprobs": "cached per-token (midpoint/rollout policy)",
+    "new_logprobs": "standard continuation forward over re-tokenized response: outputs/task2_ppo/standard",
+    "ref_logprobs": "cached per-token (reference)",
+    "values": "cached per-token (critic baseline)"
+  },
+  "mask_source": "derived:ones(T); every response token is valid",
+  "cache_per_token_fields": {
+    "status": "per-token tensors (length T); used directly",
+    "row0_lengths": {
+      "old_logprobs": 313,
+      "ref_logprobs": 313,
+      "values": 313,
+      "response_tokens_count": 313
+    },
+    "note": "old_logprobs/ref_logprobs/values are per-token (length T); response_tokens is an integer count asserted == T. Only new_logp is recomputed (standard forward)."
+  },
+  "retokenization": {
+    "reason": "cache stores response TEXT, not token IDs; the response is re-tokenized for the new_logp forward pass",
+    "eos_alignment": "cached per-token arrays include the terminal EOS; eos_token_id is appended to the re-tokenized ids iff terminated_with_eos is True",
+    "assert": "final (EOS-aligned) length == len(old_logprobs) per row; raises otherwise",
+    "rows_with_residual_mismatch": 0,
+    "verification": {
+      "n_rows": 32,
+      "n_terminated_with_eos": 24,
+      "n_clipped_at_max": 8,
+      "raw_match_and_not_eos": 8,
+      "raw_match_and_eos": 0,
+      "raw_mismatch_and_eos": 24,
+      "raw_mismatch_and_not_eos": 0,
+      "eos_vs_clipped": {
+        "eos&cap": 0,
+        "eos&nocap": 24,
+        "noeos&cap": 8,
+        "noeos&nocap": 0
+      },
+      "hypothesis": "raw_match == (not terminated_with_eos)",
+      "hypothesis_violations": []
+    }
+  },
+  "alignment": "per row: len(old_logp)==len(new_logp)==len(ref_logp)==len(values)==T=len(old_logprobs) enforced (raises on mismatch); ratio=exp(new-old)",
   "clip_epsilons": [
     0.05,
     0.2,
@@ -23,9 +62,13 @@
   "kl_convention": "sampled_per_token_mean(sum_tokens/sum_response_tokens)",
   "advantage_reconstruction": {
     "reconstructed": true,
-    "note": "PPO caches a SCALAR terminal reward (not per-token rewards and not advantages); per-token rewards and advantages are reconstructed here, not read from cache.",
-    "route": "gae(shaped_rewards(terminal, old_logprobs, ref_logprobs, mask, kl_beta), values)",
-    "terminal_reward_field": "effective_terminal_reward",
+    "route": "gae(shaped_rewards(terminal, old_logp, ref_logp, mask, kl_beta), values); old_logp/ref_logp/values are cached per-token, new_logp is a standard-policy forward over the re-tokenized response",
+    "terminal_reward_field": [
+      "effective_terminal_reward"
+    ],
+    "terminal_penalty_mode": [
+      "prefolded"
+    ],
     "terminal_field_check": {
       "checked": true,
       "model": "effective = raw - missing_eos_penalty * (not terminated_with_eos)",
@@ -41,22 +84,22 @@
     "gae_lambda": 0.95,
     "clipped_at_max_fraction": 0.25
   },
+  "affected_token_available": true,
   "per_eps": {
     "0.05": {
-      "clip_fraction": 1.0,
-      "affected_token_fraction": 0.21875,
-      "clipped_surrogate_mean": -0.220915287733078
+      "clip_fraction": 0.5474245548248291,
+      "affected_token_fraction": 0.2604946792125702,
+      "clipped_surrogate_mean": -0.04477841407060623
     },
     "0.20": {
-      "clip_fraction": 1.0,
-      "affected_token_fraction": 0.21875,
-      "clipped_surrogate_mean": -0.13624753057956696
+      "clip_fraction": 0.3291354775428772,
+      "affected_token_fraction": 0.1522577702999115,
+      "clipped_surrogate_mean": 0.004988283850252628
     },
     "0.50": {
-      "clip_fraction": 1.0,
-      "affected_token_fraction": 0.21875,
-      "clipped_surrogate_mean": 0.03308800607919693
+      "clip_fraction": 0.1690492331981659,
+      "affected_token_fraction": 0.07567506283521652,
+      "clipped_surrogate_mean": 0.057626448571681976
     }
-  },
-  "affected_token_available": true
+  }
 }

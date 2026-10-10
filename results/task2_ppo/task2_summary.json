@@ -313,9 +313,9 @@
   "clip_table": [
     {
       "eps": 0.05,
-      "cached_clip_frac": 1.0,
-      "cached_affected_frac": 0.21875,
-      "clipped_surrogate": -0.220915287733078,
+      "cached_clip_frac": 0.5474245548248291,
+      "cached_affected_frac": 0.2604946792125702,
+      "clipped_surrogate": -0.04477841407060623,
       "policy_loss_std_over_updates": 0.4564622753481931,
       "cached_affected_note": "",
       "heldout_reward_mean": 1.4982863235473634,
@@ -328,9 +328,9 @@
     },
     {
       "eps": 0.2,
-      "cached_clip_frac": 1.0,
-      "cached_affected_frac": 0.21875,
-      "clipped_surrogate": -0.13624753057956696,
+      "cached_clip_frac": 0.3291354775428772,
+      "cached_affected_frac": 0.1522577702999115,
+      "clipped_surrogate": 0.004988283850252628,
       "policy_loss_std_over_updates": 0.45790910839862997,
       "cached_affected_note": "",
       "heldout_reward_mean": 1.5232220458984376,
@@ -343,9 +343,9 @@
     },
     {
       "eps": 0.5,
-      "cached_clip_frac": 1.0,
-      "cached_affected_frac": 0.21875,
-      "clipped_surrogate": 0.03308800607919693,
+      "cached_clip_frac": 0.1690492331981659,
+      "cached_affected_frac": 0.07567506283521652,
+      "clipped_surrogate": 0.057626448571681976,
       "policy_loss_std_over_updates": 0.4579732976507099,
       "cached_affected_note": "",
       "heldout_reward_mean": 1.488171844482422,
