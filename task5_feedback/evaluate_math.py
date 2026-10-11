@@ -37,7 +37,7 @@ def load_diagnostic_ids(cfg):
     path = repo_path(cfg["paths"]["task5_diagnostics"])
     if not path.exists():
         return None
-    return {int(r["problem_id"]) for r in read_jsonl(path)}
+    return {str(r["problem_id"]) for r in read_jsonl(path)}  # str ids (match row_id)
 
 
 def load_overlap_ids(outdir):
@@ -55,13 +55,13 @@ def load_overlap_ids(outdir):
             "`python -m scripts.check_task5_train_eval_overlap` (patched to persist the full id list) "
             "before the gsm score phase."
         )
-    return {int(x) for x in teo["overlap_ids_all"]}
+    return {str(x) for x in teo["overlap_ids_all"]}  # str ids (match row_id)
 
 
 def _subset_metrics(gen_records, pairwise_records, ids):
     """Post-hoc metrics on a subset of ids from the SAVED generations/pairwise (no regeneration).
     exact acc / format / length always; win-rate vs SFT only when pairwise_records is given (not SFT)."""
-    gsub = [r for r in gen_records if int(r["id"]) in ids]
+    gsub = [r for r in gen_records if str(r["id"]) in ids]
     out = {"n": len(gsub)}
     if gsub:
         out["exact_acc"] = sum(exact_reward(r["response"], r["gold_final"]) for r in gsub) / len(gsub)
@@ -71,7 +71,7 @@ def _subset_metrics(gen_records, pairwise_records, ids):
         out["mean_response_tokens"] = mu
         out["std_response_tokens"] = (sum((x - mu) ** 2 for x in lens) / len(lens)) ** 0.5
     if pairwise_records is not None:
-        psub = [r for r in pairwise_records if int(r["id"]) in ids]
+        psub = [r for r in pairwise_records if str(r["id"]) in ids]
         if psub:
             w = sum(r["judge_pref"] == "A" for r in psub)
             loss = sum(r["judge_pref"] == "B" for r in psub)
@@ -96,9 +96,12 @@ def _resolve_decoding(cfg):
 
 
 def row_id(row, idx):
-    """Stable per-row id. transfer has source_index; otherwise fall back to the (order-stable)
-    read_jsonl index so resume keys line up deterministically across restarts."""
-    return int(row["source_index"]) if "source_index" in row else int(idx)
+    """Stable per-row STRING id. gsm8k_eval's source_index is an int (803); math_transfer_eval's is a
+    string ('svamp:chal-1'). Both become str so an id never fails an int() cast and all id comparisons
+    are uniform. Falls back to the (order-stable) read_jsonl index when source_index is absent.
+    Existing gsm generations written under integer-derived ids resume fine: everything str-normalizes
+    on read (str(803) == '803'), so no regeneration is required."""
+    return str(row["source_index"]) if "source_index" in row else str(idx)
 
 
 def problem_text(row):
@@ -112,8 +115,9 @@ def problem_text(row):
 
 
 def _done_ids(path):
-    """row ids already written. Crash-tolerant: a truncated final line is skipped and that row
-    is simply recomputed (same pattern as task4_safety.generate._done_ids)."""
+    """STRING row ids already written. Crash-tolerant: a truncated final line is skipped and that row
+    is simply recomputed (same pattern as task4_safety.generate._done_ids). str() here matches
+    row_id's str output, so a gsm file written with integer ids (803) still resumes as '803'."""
     if not path.exists():
         return set()
     done = set()
@@ -123,8 +127,8 @@ def _done_ids(path):
             if not line:
                 continue
             try:
-                done.add(int(json.loads(line)["id"]))
-            except (json.JSONDecodeError, KeyError, ValueError):
+                done.add(str(json.loads(line)["id"]))
+            except (json.JSONDecodeError, KeyError):
                 continue
     return done
 
@@ -208,7 +212,7 @@ def pairwise_vs_sft(cfg, dataset, policy, policy_recs, sft_by_id, out_jsonl, cac
 
     timer = wall_timer()
     for r in policy_recs:
-        rid = int(r["id"])
+        rid = str(r["id"])
         if rid in done:
             continue
         sft = sft_by_id[rid]  # KeyError here would mean a lost row; see alignment assert in caller
@@ -270,7 +274,7 @@ def run_score(cfg, dataset, outdir, cache_path, resume=True):
             raise FileNotFoundError(f"No generations for {p}: {path}. Run --phase generate first.")
         gen[p] = read_jsonl(path)
 
-    sft_by_id = {int(r["id"]): r for r in gen["sft"]}
+    sft_by_id = {str(r["id"]): r for r in gen["sft"]}  # str ids (gsm int source_index -> '803')
     result = {"dataset": dataset, "policies": {}}
     for p in POLICY_ORDER:
         result["policies"][p] = policy_metrics(gen[p])
@@ -279,7 +283,7 @@ def run_score(cfg, dataset, outdir, cache_path, resume=True):
     # report a per-subset win rate without any extra judge calls.
     pairwise_recs = {"sft": None}
     for p in ("rlvr", "rlaif"):
-        ids_p, ids_s = {int(r["id"]) for r in gen[p]}, set(sft_by_id)
+        ids_p, ids_s = {str(r["id"]) for r in gen[p]}, set(sft_by_id)
         assert ids_p == ids_s, (
             f"id mismatch {p} vs sft: {len(ids_p)} vs {len(ids_s)} "
             f"(only_{p}={sorted(ids_p - ids_s)[:5]}, only_sft={sorted(ids_s - ids_p)[:5]})"
@@ -299,7 +303,7 @@ def run_score(cfg, dataset, outdir, cache_path, resume=True):
     #      unseen-241 subset is the leakage-free in-domain baseline. Each subset reports exact acc,
     #      format compliance, length, and win-rate vs SFT.
     if dataset == "gsm":
-        all_ids = {int(r["id"]) for r in gen["sft"]}
+        all_ids = {str(r["id"]) for r in gen["sft"]}  # str ids throughout
         diag_ids = load_diagnostic_ids(cfg)
         seen_ids = load_overlap_ids(outdir)  # from train_eval_overlap.json, not recomputed
         for p in POLICY_ORDER:

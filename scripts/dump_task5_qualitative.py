@@ -40,6 +40,10 @@ def vj_disagreements(outdir):
         pw = _df(pw_path)
         pol = _df(gen_p)[["id", "question", "gold_final", "response"]].rename(columns={"response": "response_policy"})
         sft = _df(gen_s)[["id", "response"]].rename(columns={"response": "response_sft"})
+        # Normalize id dtype before merging: gsm generations on disk carry integer ids (803) while the
+        # pairwise log writes string ids; a raw merge would silently match nothing. Compare as strings.
+        for d in (pw, pol, sft):
+            d["id"] = d["id"].astype(str)
         m = pw.merge(pol, on="id", how="left", validate="one_to_one")
         if m["response_policy"].isna().any():
             raise ValueError(f"{policy}: pairwise rows without a matching generation (merge lost rows)")

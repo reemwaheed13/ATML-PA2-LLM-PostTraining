@@ -353,6 +353,10 @@ python -m task5_feedback.evaluate_math --config configs/feedback.yaml --dataset 
 # verifier-only is CPU (seconds); the judge pass is the 3B model over 4 pairings x 20 (~2-4 min).
 python -m task5_feedback.score_perturbations --config configs/feedback.yaml --mechanism verifier
 python -m task5_feedback.score_perturbations --config configs/feedback.yaml --mechanism judge
+# Judge sanity (GPU, ~1 min): attribute the tie rate. Re-runs ~20 pairs with the SAME rubric/decoding,
+#   captures the RAW decoded string, bypasses the cache -- separates genuine TIE from parse failure
+#   (compare() defaults to TIE) and tests whether max_new_tokens=4 truncates the verdict.
+python -m scripts.diagnose_judge_decode --config configs/feedback.yaml --n-pairs 20
 
 # --- GPU: out-of-domain SVAMP transfer (n=100) ------------------------------
 # ~5-9 min (generate 3 policies + judge). Fills exact_acc_drop_vs_gsm_full AND _unseen (drop vs the
