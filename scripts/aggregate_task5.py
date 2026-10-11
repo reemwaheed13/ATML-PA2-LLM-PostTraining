@@ -64,6 +64,7 @@ def indomain_rows(gsm):
         m = gsm["policies"][p]
         pw = m.get("pairwise", {})
         ds = m.get("diagnostic_split", {})
+        tos = m.get("train_overlap_split", {})
         rows.append({
             "policy": p, "n": m["n"],
             "exact_acc": m["exact_acc"], "format_compliance": m["format_compliance"],
@@ -73,8 +74,18 @@ def indomain_rows(gsm):
             "win": pw.get("win", ""), "tie": pw.get("tie", ""), "loss": pw.get("loss", ""),
             "verifier_judge_agreement": pw.get("verifier_judge_agreement", ""),
             "verifier_strict_n": pw.get("verifier_strict_n", ""),
-            "exact_acc_diag20": ds.get("exact_acc_diag20", ""),
-            "exact_acc_other280": ds.get("exact_acc_other280", ""),
+            "exact_acc_diag20": ds.get("diag20", {}).get("exact_acc", ""),
+            "exact_acc_other280": ds.get("other280", {}).get("exact_acc", ""),
+            # train-seen vs unseen (leakage split): acc + win-rate per subset
+            "n_seen": tos.get("n_seen", ""), "n_unseen": tos.get("n_unseen", ""),
+            "exact_acc_seen59": tos.get("seen", {}).get("exact_acc", ""),
+            "exact_acc_unseen241": tos.get("unseen", {}).get("exact_acc", ""),
+            "format_seen59": tos.get("seen", {}).get("format_compliance", ""),
+            "format_unseen241": tos.get("unseen", {}).get("format_compliance", ""),
+            "len_seen59": tos.get("seen", {}).get("mean_response_tokens", ""),
+            "len_unseen241": tos.get("unseen", {}).get("mean_response_tokens", ""),
+            "win_rate_seen59": tos.get("seen", {}).get("win_rate_vs_sft", ""),
+            "win_rate_unseen241": tos.get("unseen", {}).get("win_rate_vs_sft", ""),
         })
     return rows
 
@@ -110,7 +121,8 @@ def ood_rows(transfer):
         pw = m.get("pairwise", {})
         rows.append({
             "policy": p, "n": m["n"], "exact_acc": m["exact_acc"],
-            "exact_acc_drop_vs_gsm": m.get("exact_acc_drop_vs_gsm", ""),
+            "exact_acc_drop_vs_gsm_full": m.get("exact_acc_drop_vs_gsm_full", ""),
+            "exact_acc_drop_vs_gsm_unseen": m.get("exact_acc_drop_vs_gsm_unseen", ""),
             "mean_response_tokens": m["mean_response_tokens"],
             "std_response_tokens": m.get("std_response_tokens"),
             "win_rate_vs_sft": pw.get("win_rate_vs_sft", ""),
@@ -225,7 +237,10 @@ def main():
     _write_csv(outdir / "task5_indomain.csv",
                ["policy", "n", "exact_acc", "format_compliance", "mean_response_tokens",
                 "std_response_tokens", "win_rate_vs_sft", "win", "tie", "loss",
-                "verifier_judge_agreement", "verifier_strict_n", "exact_acc_diag20", "exact_acc_other280"],
+                "verifier_judge_agreement", "verifier_strict_n", "exact_acc_diag20", "exact_acc_other280",
+                "n_seen", "n_unseen", "exact_acc_seen59", "exact_acc_unseen241",
+                "format_seen59", "format_unseen241", "len_seen59", "len_unseen241",
+                "win_rate_seen59", "win_rate_unseen241"],
                indomain_rows(gsm))
     _write_csv(outdir / "task5_diagnostic.csv",
                ["mechanism", "pairing", "variant_A", "variant_B", "better", "tie", "wrong", "n"],
@@ -235,8 +250,8 @@ def main():
                ["dataset", "policy", "n", "cap_without_eos", "truncated"], cap_rows(outdir, datasets))
     if transfer:
         _write_csv(outdir / "task5_ood.csv",
-                   ["policy", "n", "exact_acc", "exact_acc_drop_vs_gsm", "mean_response_tokens",
-                    "std_response_tokens", "win_rate_vs_sft"], ood_rows(transfer))
+                   ["policy", "n", "exact_acc", "exact_acc_drop_vs_gsm_full", "exact_acc_drop_vs_gsm_unseen",
+                    "mean_response_tokens", "std_response_tokens", "win_rate_vs_sft"], ood_rows(transfer))
 
     checklist = {
         "in_domain_exact_acc": True, "in_domain_pairwise": True, "in_domain_format": True,

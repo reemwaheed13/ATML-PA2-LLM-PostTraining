@@ -78,6 +78,8 @@ def main():
         result["train_eval_overlap"] = {
             "n_train": len(train_idx), "n_eval": len(eval_idx), "n_overlap": len(inter),
             "overlap_fraction_of_eval": (len(inter) / len(eval_idx)) if eval_idx else None,
+            # FULL id list (consumed by evaluate_math for the seen/unseen split -- not just a preview).
+            "overlap_ids_all": sorted(inter),
             "examples": sorted(map(str, inter))[:20],
             "verdict": ("LEAKAGE: in-domain accuracy is partly train accuracy" if inter
                         else "clean: training prompts disjoint from gsm8k_eval"),

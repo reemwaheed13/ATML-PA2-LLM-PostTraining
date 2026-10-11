@@ -338,7 +338,9 @@ python -m task5_feedback.score_perturbations --config configs/feedback.yaml --se
 # Confirm the eval-set schemas (prompt/question/gold_final) before spending GPU on generation.
 python -m task5_feedback.evaluate_math --config configs/feedback.yaml --peek
 # Train/eval leakage check: do the RL training prompt indices intersect gsm8k_eval? (context for
-# whether in-domain accuracy is partly train accuracy).
+# whether in-domain accuracy is partly train accuracy). MUST run before the gsm SCORE phase: it
+# writes the full overlap id list (train_eval_overlap.json -> overlap_ids_all) that the score phase
+# consumes for the seen-59 vs unseen-241 split; the score phase raises if that field is absent.
 python -m scripts.check_task5_train_eval_overlap --config configs/feedback.yaml
 
 # --- GPU: in-domain GSM8K (n=300) -------------------------------------------
@@ -353,7 +355,8 @@ python -m task5_feedback.score_perturbations --config configs/feedback.yaml --me
 python -m task5_feedback.score_perturbations --config configs/feedback.yaml --mechanism judge
 
 # --- GPU: out-of-domain SVAMP transfer (n=100) ------------------------------
-# ~5-9 min (generate 3 policies + judge). Fills exact_acc_drop_vs_gsm from task5_gsm.json.
+# ~5-9 min (generate 3 policies + judge). Fills exact_acc_drop_vs_gsm_full AND _unseen (drop vs the
+#   leakage-free unseen-241 in-domain baseline) from task5_gsm.json.
 python -m task5_feedback.evaluate_math --config configs/feedback.yaml --dataset transfer --phase all
 
 # --- CPU, pure read: synthesis, aggregate tables + figures, qualitative dump -

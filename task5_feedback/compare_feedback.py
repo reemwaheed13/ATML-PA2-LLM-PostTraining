@@ -69,16 +69,27 @@ def main():
     for p in POLICIES:
         m = gsm["policies"][p]
         pw = m.get("pairwise", {})
+        ds = m.get("diagnostic_split", {})
+        tos = m.get("train_overlap_split", {})
         entry = {
             "verifier": {  # binary scale
                 "exact_acc": m["exact_acc"],
-                "exact_acc_diag20": m.get("diagnostic_split", {}).get("exact_acc_diag20"),
-                "exact_acc_other280": m.get("diagnostic_split", {}).get("exact_acc_other280"),
+                "exact_acc_diag20": ds.get("diag20", {}).get("exact_acc"),
+                "exact_acc_other280": ds.get("other280", {}).get("exact_acc"),
+                # leakage split: train-seen vs unseen-241 (the leakage-free in-domain baseline)
+                "exact_acc_seen59": tos.get("seen", {}).get("exact_acc"),
+                "exact_acc_unseen241": tos.get("unseen", {}).get("exact_acc"),
+                "n_seen": tos.get("n_seen"), "n_unseen": tos.get("n_unseen"),
             },
             "format_compliance": m["format_compliance"],
             "mean_response_tokens": m["mean_response_tokens"],
             "std_response_tokens": m.get("std_response_tokens"),
         }
+        if tos:  # per-subset win rate ([0,1]) kept on the judge scale, separate from verifier acc above
+            entry["judge_seen_unseen"] = {
+                "win_rate_seen59": tos.get("seen", {}).get("win_rate_vs_sft"),
+                "win_rate_unseen241": tos.get("unseen", {}).get("win_rate_vs_sft"),
+            }
         if pw:  # rlvr / rlaif have a pairwise-vs-SFT block
             entry["judge"] = {  # [0,1] scale
                 "win_rate_vs_sft": pw["win_rate_vs_sft"],
@@ -105,7 +116,9 @@ def main():
         comparison["out_of_domain"] = {
             p: {
                 "exact_acc": transfer["policies"][p]["exact_acc"],
-                "exact_acc_drop_vs_gsm": transfer["policies"][p].get("exact_acc_drop_vs_gsm"),
+                # drop against the full-300 baseline AND the leakage-free unseen-241 baseline
+                "exact_acc_drop_vs_gsm_full": transfer["policies"][p].get("exact_acc_drop_vs_gsm_full"),
+                "exact_acc_drop_vs_gsm_unseen": transfer["policies"][p].get("exact_acc_drop_vs_gsm_unseen"),
                 "mean_response_tokens": transfer["policies"][p]["mean_response_tokens"],
                 "win_rate_vs_sft": transfer["policies"][p].get("pairwise", {}).get("win_rate_vs_sft"),
             }

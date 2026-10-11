@@ -40,6 +40,47 @@ def load_diagnostic_ids(cfg):
     return {int(r["problem_id"]) for r in read_jsonl(path)}
 
 
+def load_overlap_ids(outdir):
+    """gsm8k_eval ids that also appear in the RL training pool, LOADED from the overlap check's JSON
+    (not recomputed here). Returns a set[int], or None if the file is absent. Raises if the file
+    predates the full-id-list field so we never silently fall back to a truncated preview."""
+    p = outdir / "train_eval_overlap.json"
+    if not p.exists():
+        return None
+    obj = json.loads(p.read_text(encoding="utf-8"))
+    teo = obj.get("train_eval_overlap", {})
+    if "overlap_ids_all" not in teo:
+        raise KeyError(
+            "train_eval_overlap.json has no 'overlap_ids_all' -- re-run "
+            "`python -m scripts.check_task5_train_eval_overlap` (patched to persist the full id list) "
+            "before the gsm score phase."
+        )
+    return {int(x) for x in teo["overlap_ids_all"]}
+
+
+def _subset_metrics(gen_records, pairwise_records, ids):
+    """Post-hoc metrics on a subset of ids from the SAVED generations/pairwise (no regeneration).
+    exact acc / format / length always; win-rate vs SFT only when pairwise_records is given (not SFT)."""
+    gsub = [r for r in gen_records if int(r["id"]) in ids]
+    out = {"n": len(gsub)}
+    if gsub:
+        out["exact_acc"] = sum(exact_reward(r["response"], r["gold_final"]) for r in gsub) / len(gsub)
+        out["format_compliance"] = sum(extract_designated_final(r["response"]) is not None for r in gsub) / len(gsub)
+        lens = [int(r["response_tokens"]) for r in gsub]
+        mu = sum(lens) / len(lens)
+        out["mean_response_tokens"] = mu
+        out["std_response_tokens"] = (sum((x - mu) ** 2 for x in lens) / len(lens)) ** 0.5
+    if pairwise_records is not None:
+        psub = [r for r in pairwise_records if int(r["id"]) in ids]
+        if psub:
+            w = sum(r["judge_pref"] == "A" for r in psub)
+            loss = sum(r["judge_pref"] == "B" for r in psub)
+            t = sum(r["judge_pref"] == "TIE" for r in psub)
+            out["win_rate_vs_sft"] = (w + 0.5 * t) / len(psub)
+            out["win"], out["tie"], out["loss"], out["n_pairwise"] = w, t, loss, len(psub)
+    return out
+
+
 def _resolve_decoding(cfg):
     # Same fail-loud greedy convention as task4_safety.generate / task3 evaluate: no silent
     # default for eval_do_sample, so Tasks 2/3/4/5 cannot diverge on decoding.
@@ -234,24 +275,9 @@ def run_score(cfg, dataset, outdir, cache_path, resume=True):
     for p in POLICY_ORDER:
         result["policies"][p] = policy_metrics(gen[p])
 
-    # The diagnostic 20 are a subset of the gsm 300, so diagnostic and in-domain results are not
-    # independent samples. Split in-domain accuracy by diagnostic-20 vs the other 280 so the report
-    # can state whether those 20 are representative. (Only meaningful on gsm.)
-    diag_ids = load_diagnostic_ids(cfg) if dataset == "gsm" else None
-    if diag_ids:
-        for p in POLICY_ORDER:
-            recs = gen[p]
-            in20 = [r for r in recs if int(r["id"]) in diag_ids]
-            out280 = [r for r in recs if int(r["id"]) not in diag_ids]
-            overlap = len({int(r["id"]) for r in recs} & diag_ids)
-            result["policies"][p]["diagnostic_split"] = {
-                "overlap_ids": overlap, "diagnostic_ids_total": len(diag_ids),
-                "exact_acc_diag20": (sum(exact_reward(r["response"], r["gold_final"]) for r in in20) / len(in20)) if in20 else None,
-                "n_diag20": len(in20),
-                "exact_acc_other280": (sum(exact_reward(r["response"], r["gold_final"]) for r in out280) / len(out280)) if out280 else None,
-                "n_other": len(out280),
-            }
-
+    # Pairwise vs SFT first (rlvr/rlaif); keep the per-pair records so the subset splits below can
+    # report a per-subset win rate without any extra judge calls.
+    pairwise_recs = {"sft": None}
     for p in ("rlvr", "rlaif"):
         ids_p, ids_s = {int(r["id"]) for r in gen[p]}, set(sft_by_id)
         assert ids_p == ids_s, (
@@ -260,21 +286,56 @@ def run_score(cfg, dataset, outdir, cache_path, resume=True):
         )
         recs, elapsed = pairwise_vs_sft(cfg, dataset, p, gen[p], sft_by_id,
                                         outdir / f"pairwise_{dataset}_{p}.jsonl", cache_path, resume=resume)
+        pairwise_recs[p] = recs
         agg = aggregate_pairwise(recs)
         agg["elapsed_s_last_run"] = elapsed  # wall-clock of this judge pass (resumed pairs excluded)
         result["policies"][p]["pairwise"] = agg
 
-    # Transfer "drop vs in-domain": only when the GSM result is already on disk.
+    # Post-hoc subset splits on the SAVED generations/pairwise (gsm only; NO regeneration):
+    #  (1) diagnostic-20 vs other-280 -- the diagnostic set is a subset of the 300, so the two
+    #      studies are not independent; is the diagnostic-20 representative?
+    #  (2) train-seen-59 vs unseen-241 -- 19.7% of gsm8k_eval source_indexes are in the RL training
+    #      pool (see train_eval_overlap.json), so in-domain accuracy is partly TRAIN accuracy; the
+    #      unseen-241 subset is the leakage-free in-domain baseline. Each subset reports exact acc,
+    #      format compliance, length, and win-rate vs SFT.
+    if dataset == "gsm":
+        all_ids = {int(r["id"]) for r in gen["sft"]}
+        diag_ids = load_diagnostic_ids(cfg)
+        seen_ids = load_overlap_ids(outdir)  # from train_eval_overlap.json, not recomputed
+        for p in POLICY_ORDER:
+            pr = pairwise_recs[p]
+            if diag_ids:
+                din = all_ids & diag_ids
+                result["policies"][p]["diagnostic_split"] = {
+                    "n_overlap_ids": len(din), "diagnostic_ids_total": len(diag_ids),
+                    "diag20": _subset_metrics(gen[p], pr, din),
+                    "other280": _subset_metrics(gen[p], pr, all_ids - diag_ids),
+                }
+            if seen_ids:
+                sin = all_ids & seen_ids
+                result["policies"][p]["train_overlap_split"] = {
+                    "n_seen": len(sin), "n_unseen": len(all_ids - seen_ids),
+                    "overlap_fraction_of_eval": (len(sin) / len(all_ids)) if all_ids else None,
+                    "seen": _subset_metrics(gen[p], pr, sin),
+                    "unseen": _subset_metrics(gen[p], pr, all_ids - seen_ids),
+                }
+
+    # OOD drop against BOTH the full-300 in-domain baseline and the leakage-free unseen-241 baseline.
     if dataset == "transfer":
         gsm_json = outdir / "task5_gsm.json"
         if gsm_json.exists():
             gsm = json.loads(gsm_json.read_text(encoding="utf-8"))
             for p in POLICY_ORDER:
-                g = gsm["policies"].get(p, {}).get("exact_acc")
-                if g is not None:
-                    result["policies"][p]["exact_acc_drop_vs_gsm"] = g - result["policies"][p]["exact_acc"]
+                gm = gsm["policies"].get(p, {})
+                acc = result["policies"][p]["exact_acc"]
+                full = gm.get("exact_acc")
+                unseen = gm.get("train_overlap_split", {}).get("unseen", {}).get("exact_acc")
+                if full is not None:
+                    result["policies"][p]["exact_acc_drop_vs_gsm_full"] = full - acc
+                if unseen is not None:
+                    result["policies"][p]["exact_acc_drop_vs_gsm_unseen"] = unseen - acc
         else:
-            result["drop_note"] = "run --dataset gsm --phase score first to populate exact_acc_drop_vs_gsm"
+            result["drop_note"] = "run --dataset gsm --phase score first to populate the OOD drops"
 
     save_json(outdir / f"task5_{dataset}.json", result)
     _write_csv(outdir / f"task5_{dataset}.csv", result)
@@ -282,9 +343,14 @@ def run_score(cfg, dataset, outdir, cache_path, resume=True):
     for p in POLICY_ORDER:
         m = result["policies"][p]
         pw = m.get("pairwise", {})
-        print(f"  {p:5s} acc={m['exact_acc']:.3f} fmt={m['format_compliance']:.3f} "
-              f"len={m['mean_response_tokens']:.0f} trunc={m['truncated']} "
-              f"win_vs_sft={pw.get('win_rate_vs_sft')} vj_agree={pw.get('verifier_judge_agreement')}")
+        line = (f"  {p:5s} acc={m['exact_acc']:.3f} fmt={m['format_compliance']:.3f} "
+                f"len={m['mean_response_tokens']:.0f} trunc={m['truncated']} "
+                f"win_vs_sft={pw.get('win_rate_vs_sft')} vj_agree={pw.get('verifier_judge_agreement')}")
+        tos = m.get("train_overlap_split")
+        if tos:
+            line += (f"  | seen59 acc={tos['seen'].get('exact_acc')} "
+                     f"unseen241 acc={tos['unseen'].get('exact_acc')}")
+        print(line)
     return result
 
 
@@ -292,8 +358,10 @@ def _write_csv(path, result):
     path.parent.mkdir(parents=True, exist_ok=True)
     fields = ["dataset", "policy", "n", "exact_acc", "format_compliance",
               "mean_response_tokens", "std_response_tokens",
-              "truncated", "truncated_no_final", "exact_acc_drop_vs_gsm",
+              "truncated", "truncated_no_final",
+              "exact_acc_drop_vs_gsm_full", "exact_acc_drop_vs_gsm_unseen",
               "exact_acc_diag20", "exact_acc_other280",
+              "exact_acc_seen59", "exact_acc_unseen241", "win_rate_seen59", "win_rate_unseen241",
               "win_rate_vs_sft", "win", "tie", "loss", "verifier_judge_agreement",
               "verifier_strict_n", "position_tested_n", "position_untested_n", "n_compare_calls"]
     with path.open("w", newline="", encoding="utf-8") as f:
@@ -303,15 +371,21 @@ def _write_csv(path, result):
             m = result["policies"][p]
             pw = m.get("pairwise", {})
             ds = m.get("diagnostic_split", {})
+            tos = m.get("train_overlap_split", {})
             w.writerow({
                 "dataset": result["dataset"], "policy": p, "n": m["n"],
                 "exact_acc": m["exact_acc"], "format_compliance": m["format_compliance"],
                 "mean_response_tokens": m["mean_response_tokens"],
                 "std_response_tokens": m["std_response_tokens"],
                 "truncated": m["truncated"], "truncated_no_final": m["truncated_no_final"],
-                "exact_acc_drop_vs_gsm": m.get("exact_acc_drop_vs_gsm", ""),
-                "exact_acc_diag20": ds.get("exact_acc_diag20", ""),
-                "exact_acc_other280": ds.get("exact_acc_other280", ""),
+                "exact_acc_drop_vs_gsm_full": m.get("exact_acc_drop_vs_gsm_full", ""),
+                "exact_acc_drop_vs_gsm_unseen": m.get("exact_acc_drop_vs_gsm_unseen", ""),
+                "exact_acc_diag20": ds.get("diag20", {}).get("exact_acc", ""),
+                "exact_acc_other280": ds.get("other280", {}).get("exact_acc", ""),
+                "exact_acc_seen59": tos.get("seen", {}).get("exact_acc", ""),
+                "exact_acc_unseen241": tos.get("unseen", {}).get("exact_acc", ""),
+                "win_rate_seen59": tos.get("seen", {}).get("win_rate_vs_sft", ""),
+                "win_rate_unseen241": tos.get("unseen", {}).get("win_rate_vs_sft", ""),
                 "win_rate_vs_sft": pw.get("win_rate_vs_sft", ""),
                 "win": pw.get("win", ""), "tie": pw.get("tie", ""), "loss": pw.get("loss", ""),
                 "verifier_judge_agreement": pw.get("verifier_judge_agreement", ""),
