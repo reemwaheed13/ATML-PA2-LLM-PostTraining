@@ -1,0 +1,118 @@
+{
+  "config": "configs/feedback.yaml",
+  "n_rows": 100,
+  "n_problems": 20,
+  "pairings": {
+    "S_reason": {
+      "A": "clean_correct",
+      "B": "corrupt_reasoning_correct_final"
+    },
+    "S_outcome": {
+      "A": "clean_correct",
+      "B": "good_reasoning_wrong_final"
+    },
+    "filler_control": {
+      "A": "clean_correct",
+      "B": "persuasive_filler_correct"
+    },
+    "gold_distractor": {
+      "A": "clean_correct",
+      "B": "gold_distractor_wrong_final"
+    }
+  },
+  "judge": {
+    "scale": "pairwise preference, win space [0,1]; A/B/TIE consensus over BOTH argument orders",
+    "orientation_finding": "rlaif.py:80-81 picks one physical orientation per pair via int(key[:8],16)%2 and un-swaps the verdict (:98-99): balanced ACROSS distinct pairs, one orientation per call. compare(a,b) and compare(b,a) hit opposite physical orientations iff their swap bits are equal (s1==s2) -- the position-tested case, computed exactly from the judge's own _key. When s1!=s2 the second call is a byte-identical prompt and is skipped. Disagreement rates below are over the tested subset only.",
+    "cache_key_finding": "rlaif.py:67-72 _key hashes {model, problem, a, b} -- problem AND both response texts. SFT-vs-RLVR and SFT-vs-RLAIF cannot collide.",
+    "position_tested_n": 42,
+    "position_untested_n": 38,
+    "position_disagreement_count": 0,
+    "soft_disagreement_count": 8,
+    "position_disagreement_rate_tested": 0.19047619047619047,
+    "caveats": {
+      "gold_distractor": "gold_distractor_wrong_final is 2 lines vs clean_correct's 5; a clean-preference here is confounded with judge length bias and must NOT be read as distractor detection with this set."
+    },
+    "pairings": {
+      "S_reason": {
+        "variant_A": "clean_correct",
+        "variant_B": "corrupt_reasoning_correct_final",
+        "better": 0.0,
+        "tie": 1.0,
+        "wrong": 0.0,
+        "n": 20
+      },
+      "S_outcome": {
+        "variant_A": "clean_correct",
+        "variant_B": "good_reasoning_wrong_final",
+        "better": 0.0,
+        "tie": 1.0,
+        "wrong": 0.0,
+        "n": 20
+      },
+      "filler_control": {
+        "variant_A": "clean_correct",
+        "variant_B": "persuasive_filler_correct",
+        "better": 0.0,
+        "tie": 0.75,
+        "wrong": 0.25,
+        "n": 20
+      },
+      "gold_distractor": {
+        "variant_A": "clean_correct",
+        "variant_B": "gold_distractor_wrong_final",
+        "better": 0.05,
+        "tie": 0.9,
+        "wrong": 0.05,
+        "n": 20
+      }
+    },
+    "S_reason": 0.0,
+    "S_outcome": 0.0,
+    "breakdown_by_style": {
+      "clean": {
+        "better": 0.0,
+        "tie": 1.0,
+        "wrong": 0.0,
+        "n": 40
+      },
+      "distractor": {
+        "better": 0.05,
+        "tie": 0.9,
+        "wrong": 0.05,
+        "n": 20
+      },
+      "persuasive_filler": {
+        "better": 0.0,
+        "tie": 0.75,
+        "wrong": 0.25,
+        "n": 20
+      }
+    },
+    "breakdown_by_reasoning_quality": {
+      "correct": {
+        "better": 0.0,
+        "tie": 0.75,
+        "wrong": 0.25,
+        "n": 20
+      },
+      "corrupted": {
+        "better": 0.0,
+        "tie": 1.0,
+        "wrong": 0.0,
+        "n": 20
+      },
+      "incorrect": {
+        "better": 0.05,
+        "tie": 0.9,
+        "wrong": 0.05,
+        "n": 20
+      },
+      "mostly_correct": {
+        "better": 0.0,
+        "tie": 1.0,
+        "wrong": 0.0,
+        "n": 20
+      }
+    }
+  }
+}

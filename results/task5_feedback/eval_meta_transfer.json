@@ -1,0 +1,19 @@
+{
+  "base_model": "Qwen/Qwen2.5-1.5B-Instruct",
+  "dataset": "transfer",
+  "policies": {
+    "sft": null,
+    "rlvr": "checkpoints/rlvr_policy",
+    "rlaif": "checkpoints/rlaif_policy"
+  },
+  "decoding": {
+    "do_sample": false,
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "max_new_tokens": 512,
+    "max_prompt_length": 512
+  },
+  "seed": 6304,
+  "ai_judge_model": "Qwen/Qwen2.5-3B-Instruct",
+  "note": "greedy; one response/prompt/policy; pairwise vs SFT uses the Step-2 both-order judge"
+}

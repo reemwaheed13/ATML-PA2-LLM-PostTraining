@@ -1,0 +1,13 @@
+{
+  "ai_judge_model": "Qwen/Qwen2.5-3B-Instruct",
+  "elapsed_s_last_run": 26.808755846999702,
+  "n_pairs": 80,
+  "n_compare_calls_total": 122,
+  "n_compare_calls_by_pairing": {
+    "S_reason": 27,
+    "S_outcome": 34,
+    "filler_control": 30,
+    "gold_distractor": 31
+  },
+  "note": "compare() calls = model calls on a cold cache; elapsed excludes resumed pairs."
+}

@@ -1,0 +1,4 @@
+dataset,policy,n,exact_acc,format_compliance,mean_response_tokens,std_response_tokens,truncated,truncated_no_final,exact_acc_drop_vs_gsm_full,exact_acc_drop_vs_gsm_unseen,exact_acc_diag20,exact_acc_other280,exact_acc_seen59,exact_acc_unseen241,win_rate_seen59,win_rate_unseen241,win_rate_vs_sft,win,tie,loss,verifier_judge_agreement,verifier_strict_n,position_tested_n,position_untested_n,n_compare_calls
+transfer,sft,100,0.47,0.6,163.94,72.38975341856056,0,0,-0.18,,,,,,,,,,,,,,,,
+transfer,rlvr,100,0.44,0.57,162.84,70.08077054370906,0,0,-0.14666666666666667,,,,,,,,0.5,0,100,0,0.0,3,95,5,195
+transfer,rlaif,100,0.44,0.57,163.16,70.26360651147932,0,0,-0.16666666666666669,,,,,,,,0.495,0,99,1,0.0,3,96,4,196

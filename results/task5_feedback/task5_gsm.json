@@ -1,0 +1,86 @@
+{
+  "dataset": "gsm",
+  "policies": {
+    "sft": {
+      "n": 300,
+      "exact_acc": 0.29,
+      "format_compliance": 0.36,
+      "mean_response_tokens": 275.59,
+      "std_response_tokens": 87.04976680037689,
+      "truncated": 6,
+      "truncated_no_final": 6,
+      "diagnostic_split": {
+        "overlap_ids": 20,
+        "diagnostic_ids_total": 20,
+        "exact_acc_diag20": 0.4,
+        "n_diag20": 20,
+        "exact_acc_other280": 0.28214285714285714,
+        "n_other": 280
+      }
+    },
+    "rlvr": {
+      "n": 300,
+      "exact_acc": 0.29333333333333333,
+      "format_compliance": 0.36666666666666664,
+      "mean_response_tokens": 275.1333333333333,
+      "std_response_tokens": 87.60206745404027,
+      "truncated": 7,
+      "truncated_no_final": 7,
+      "diagnostic_split": {
+        "overlap_ids": 20,
+        "diagnostic_ids_total": 20,
+        "exact_acc_diag20": 0.4,
+        "n_diag20": 20,
+        "exact_acc_other280": 0.2857142857142857,
+        "n_other": 280
+      },
+      "pairwise": {
+        "n": 300,
+        "win": 3,
+        "loss": 3,
+        "tie": 294,
+        "win_rate_vs_sft": 0.5,
+        "verifier_judge_agreement": 0.0,
+        "verifier_strict_n": 9,
+        "position_tested_n": 268,
+        "position_untested_n": 32,
+        "position_disagreement_count": 7,
+        "soft_disagreement_count": 3,
+        "n_compare_calls": 568,
+        "elapsed_s_last_run": 84.36647328100025
+      }
+    },
+    "rlaif": {
+      "n": 300,
+      "exact_acc": 0.2733333333333333,
+      "format_compliance": 0.35,
+      "mean_response_tokens": 273.75333333333333,
+      "std_response_tokens": 85.20711524801722,
+      "truncated": 5,
+      "truncated_no_final": 5,
+      "diagnostic_split": {
+        "overlap_ids": 20,
+        "diagnostic_ids_total": 20,
+        "exact_acc_diag20": 0.4,
+        "n_diag20": 20,
+        "exact_acc_other280": 0.2642857142857143,
+        "n_other": 280
+      },
+      "pairwise": {
+        "n": 300,
+        "win": 0,
+        "loss": 2,
+        "tie": 298,
+        "win_rate_vs_sft": 0.49666666666666665,
+        "verifier_judge_agreement": 0.0,
+        "verifier_strict_n": 7,
+        "position_tested_n": 276,
+        "position_untested_n": 24,
+        "position_disagreement_count": 7,
+        "soft_disagreement_count": 2,
+        "n_compare_calls": 576,
+        "elapsed_s_last_run": 19.022446796999247
+      }
+    }
+  }
+}
