@@ -31,6 +31,15 @@ def dataset_path(cfg, dataset: str):
     raise ValueError(f"unknown dataset {dataset!r}")
 
 
+def load_diagnostic_ids(cfg):
+    """source_index set of the 20 controlled-diagnostic problems (== gsm8k_eval source_indexes;
+    overlap is 20/20). Used to report whether those 20 are representative of the full 300."""
+    path = repo_path(cfg["paths"]["task5_diagnostics"])
+    if not path.exists():
+        return None
+    return {int(r["problem_id"]) for r in read_jsonl(path)}
+
+
 def _resolve_decoding(cfg):
     # Same fail-loud greedy convention as task4_safety.generate / task3 evaluate: no silent
     # default for eval_do_sample, so Tasks 2/3/4/5 cannot diverge on decoding.
@@ -137,12 +146,15 @@ def policy_metrics(records):
     assert n > 0, "no generated records to score"
     acc = sum(exact_reward(r["response"], r["gold_final"]) for r in records) / n
     fmt = sum(extract_designated_final(r["response"]) is not None for r in records) / n
-    toks = sum(int(r["response_tokens"]) for r in records) / n
+    lens = [int(r["response_tokens"]) for r in records]
+    mean_len = sum(lens) / n
+    std_len = (sum((x - mean_len) ** 2 for x in lens) / n) ** 0.5  # population sd
     trunc = sum(bool(r["truncated"]) for r in records)
     # A truncated response with no designated final is a FORMAT miss, reported apart from accuracy.
     trunc_no_final = sum(bool(r["truncated"]) and extract_designated_final(r["response"]) is None
                          for r in records)
-    return {"n": n, "exact_acc": acc, "format_compliance": fmt, "mean_response_tokens": toks,
+    return {"n": n, "exact_acc": acc, "format_compliance": fmt,
+            "mean_response_tokens": mean_len, "std_response_tokens": std_len,
             "truncated": trunc, "truncated_no_final": trunc_no_final}
 
 
@@ -171,12 +183,13 @@ def pairwise_vs_sft(cfg, dataset, policy, policy_recs, sft_by_id, out_jsonl, cac
             "position_flip": bool(info["position_flip"]), "soft_disagreement": bool(info["soft"]),
             "reward_policy": rp, "reward_sft": rs, "verifier_rank": verifier_rank,
         })
-    print(f"[judge {dataset}/{policy}] done in {timer():.1f}s -> {out_jsonl}")
+    elapsed = timer()
+    print(f"[judge {dataset}/{policy}] done in {elapsed:.1f}s -> {out_jsonl}")
 
     records = read_jsonl(out_jsonl)
     assert len(records) == len(policy_recs), \
         f"pairwise log for {policy} has {len(records)} rows, expected {len(policy_recs)}"
-    return records
+    return records, elapsed
 
 
 def aggregate_pairwise(records):
@@ -203,6 +216,8 @@ def aggregate_pairwise(records):
         "position_untested_n": n - len(tested),
         "position_disagreement_count": sum(r["position_flip"] for r in tested),
         "soft_disagreement_count": sum(r["soft_disagreement"] for r in tested),
+        # compare() model calls (cold cache): 2 per position-tested pair, 1 where skipped.
+        "n_compare_calls": int(sum(2 if r["position_tested"] else 1 for r in records)),
     }
 
 
@@ -219,15 +234,35 @@ def run_score(cfg, dataset, outdir, cache_path, resume=True):
     for p in POLICY_ORDER:
         result["policies"][p] = policy_metrics(gen[p])
 
+    # The diagnostic 20 are a subset of the gsm 300, so diagnostic and in-domain results are not
+    # independent samples. Split in-domain accuracy by diagnostic-20 vs the other 280 so the report
+    # can state whether those 20 are representative. (Only meaningful on gsm.)
+    diag_ids = load_diagnostic_ids(cfg) if dataset == "gsm" else None
+    if diag_ids:
+        for p in POLICY_ORDER:
+            recs = gen[p]
+            in20 = [r for r in recs if int(r["id"]) in diag_ids]
+            out280 = [r for r in recs if int(r["id"]) not in diag_ids]
+            overlap = len({int(r["id"]) for r in recs} & diag_ids)
+            result["policies"][p]["diagnostic_split"] = {
+                "overlap_ids": overlap, "diagnostic_ids_total": len(diag_ids),
+                "exact_acc_diag20": (sum(exact_reward(r["response"], r["gold_final"]) for r in in20) / len(in20)) if in20 else None,
+                "n_diag20": len(in20),
+                "exact_acc_other280": (sum(exact_reward(r["response"], r["gold_final"]) for r in out280) / len(out280)) if out280 else None,
+                "n_other": len(out280),
+            }
+
     for p in ("rlvr", "rlaif"):
         ids_p, ids_s = {int(r["id"]) for r in gen[p]}, set(sft_by_id)
         assert ids_p == ids_s, (
             f"id mismatch {p} vs sft: {len(ids_p)} vs {len(ids_s)} "
             f"(only_{p}={sorted(ids_p - ids_s)[:5]}, only_sft={sorted(ids_s - ids_p)[:5]})"
         )
-        recs = pairwise_vs_sft(cfg, dataset, p, gen[p], sft_by_id,
-                               outdir / f"pairwise_{dataset}_{p}.jsonl", cache_path, resume=resume)
-        result["policies"][p]["pairwise"] = aggregate_pairwise(recs)
+        recs, elapsed = pairwise_vs_sft(cfg, dataset, p, gen[p], sft_by_id,
+                                        outdir / f"pairwise_{dataset}_{p}.jsonl", cache_path, resume=resume)
+        agg = aggregate_pairwise(recs)
+        agg["elapsed_s_last_run"] = elapsed  # wall-clock of this judge pass (resumed pairs excluded)
+        result["policies"][p]["pairwise"] = agg
 
     # Transfer "drop vs in-domain": only when the GSM result is already on disk.
     if dataset == "transfer":
@@ -255,28 +290,35 @@ def run_score(cfg, dataset, outdir, cache_path, resume=True):
 
 def _write_csv(path, result):
     path.parent.mkdir(parents=True, exist_ok=True)
-    fields = ["dataset", "policy", "n", "exact_acc", "format_compliance", "mean_response_tokens",
+    fields = ["dataset", "policy", "n", "exact_acc", "format_compliance",
+              "mean_response_tokens", "std_response_tokens",
               "truncated", "truncated_no_final", "exact_acc_drop_vs_gsm",
+              "exact_acc_diag20", "exact_acc_other280",
               "win_rate_vs_sft", "win", "tie", "loss", "verifier_judge_agreement",
-              "verifier_strict_n", "position_tested_n", "position_untested_n"]
+              "verifier_strict_n", "position_tested_n", "position_untested_n", "n_compare_calls"]
     with path.open("w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=fields)
         w.writeheader()
         for p in POLICY_ORDER:
             m = result["policies"][p]
             pw = m.get("pairwise", {})
+            ds = m.get("diagnostic_split", {})
             w.writerow({
                 "dataset": result["dataset"], "policy": p, "n": m["n"],
                 "exact_acc": m["exact_acc"], "format_compliance": m["format_compliance"],
                 "mean_response_tokens": m["mean_response_tokens"],
+                "std_response_tokens": m["std_response_tokens"],
                 "truncated": m["truncated"], "truncated_no_final": m["truncated_no_final"],
                 "exact_acc_drop_vs_gsm": m.get("exact_acc_drop_vs_gsm", ""),
+                "exact_acc_diag20": ds.get("exact_acc_diag20", ""),
+                "exact_acc_other280": ds.get("exact_acc_other280", ""),
                 "win_rate_vs_sft": pw.get("win_rate_vs_sft", ""),
                 "win": pw.get("win", ""), "tie": pw.get("tie", ""), "loss": pw.get("loss", ""),
                 "verifier_judge_agreement": pw.get("verifier_judge_agreement", ""),
                 "verifier_strict_n": pw.get("verifier_strict_n", ""),
                 "position_tested_n": pw.get("position_tested_n", ""),
                 "position_untested_n": pw.get("position_untested_n", ""),
+                "n_compare_calls": pw.get("n_compare_calls", ""),
             })
 
 

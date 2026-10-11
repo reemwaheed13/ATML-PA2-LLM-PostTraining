@@ -51,13 +51,23 @@ PAIRINGS = {
 
 
 def normalize_gold(value) -> str:
-    """Single, explicit cast for the gold final answer.
+    """Single, explicit cast + validation for the gold final answer.
 
-    `gold_final` is an int in the diagnostic set and a bare str in gsm8k_eval;
-    we do NOT rely on numerically_equal to coerce. Cast once, assert the result.
+    `gold_final` is an int in the diagnostic set and a bare numeric str in
+    gsm8k_eval / transfer; we do NOT rely on numerically_equal to coerce. Cast
+    once, and REQUIRE the result to be numeric. A malformed gold -- e.g. a
+    '#### 42' designated-final string accidentally passed where a gold belongs --
+    must raise here, not flow into numerically_equal and silently score every
+    response 0 (a 0% that looks like a real result).
     """
-    gold = str(value)
-    assert isinstance(gold, str), f"gold_final failed to normalize to str: {value!r}"
+    gold = str(value).strip()
+    try:
+        float(gold)
+    except ValueError:
+        raise ValueError(
+            f"gold_final is not numeric: {value!r} (normalized {gold!r}). "
+            "A '#### n' response string must never be passed as the gold."
+        )
     return gold
 
 
@@ -150,8 +160,23 @@ def discriminating_self_test(path):
             f"assertion fired but did not name the corrupted problem_id={vid}: {exc}"
         )
         print(f"[discriminating] PASS: corrupting problem_id={vid} tripped the self-check:\n    {exc}")
+        _gold_normalization_discriminating_test()
         return
     raise AssertionError("discriminating test FAILED: corrupting a gold_final did NOT trip the self-check")
+
+
+def _gold_normalization_discriminating_test():
+    """A response-shaped gold ('#### 42') must RAISE in normalize_gold, not sail through and
+    silently score every response 0%. Prove the guard fires rather than trusting it exists."""
+    try:
+        normalize_gold("#### 42")
+    except ValueError as exc:
+        print(f"[discriminating] PASS: normalize_gold('#### 42') raised instead of scoring 0%:\n    {exc}")
+        return
+    raise AssertionError(
+        "gold-normalization test FAILED: normalize_gold('#### 42') did not raise -- "
+        "a malformed gold would silently score 0%"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -323,13 +348,29 @@ def run_judge_pairings(cfg, groups, out_jsonl, cache_path, resume=True):
                 "soft_disagreement": bool(info["soft"]),
                 "style_B": b.get("style", ""), "reasoning_quality_B": b.get("reasoning_quality", ""),
             })
-    print(f"[Step D] judge pairings done in {timer():.1f}s -> {out_jsonl} "
+    elapsed = timer()
+    print(f"[Step D] judge pairings done in {elapsed:.1f}s -> {out_jsonl} "
           f"(skipped {skipped} redundant second calls this run)")
 
     # Reload the full log (resumed + new) and assert no pair was lost.
     records = read_jsonl(out_jsonl)
     expected = len(PAIRINGS) * len(groups)
     assert len(records) == expected, f"judge log has {len(records)} rows, expected {expected}"
+
+    # Inference-cost record (the feedback-source discussion needs a number). compare() model
+    # calls = 2 on a position-tested pair, 1 where the redundant second call was skipped; equals
+    # cold-cache model calls. elapsed is THIS pass only (resumed pairs excluded) -> ~0 if warm.
+    calls_by_pairing = defaultdict(int)
+    for r in records:
+        calls_by_pairing[r["pairing"]] += 2 if r.get("position_tested") else 1
+    save_json(out_jsonl.parent / "diagnostic_judge_meta.json", {
+        "ai_judge_model": cfg["ai_judge_model"],
+        "elapsed_s_last_run": elapsed,
+        "n_pairs": len(records),
+        "n_compare_calls_total": int(sum(calls_by_pairing.values())),
+        "n_compare_calls_by_pairing": {k: int(v) for k, v in calls_by_pairing.items()},
+        "note": "compare() calls = model calls on a cold cache; elapsed excludes resumed pairs.",
+    })
     return records
 
 

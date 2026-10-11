@@ -122,11 +122,12 @@ python -m task4_safety.evaluate_safety --config configs/feedback.yaml
 ### Task 5 - RLVR vs RLAIF
 
 The exact verifier and pairwise AI judge are supplied; you implement the evaluation/analysis.
+The full ordered sequence (with GPU/CPU split and wall-clock) is in §14.
 
 ```bash
-python -m task5_feedback.evaluate_math --config configs/feedback.yaml --dataset gsm
+python -m task5_feedback.evaluate_math --config configs/feedback.yaml --dataset gsm --phase all
 python -m task5_feedback.score_perturbations --config configs/feedback.yaml
-python -m task5_feedback.evaluate_math --config configs/feedback.yaml --dataset transfer
+python -m task5_feedback.evaluate_math --config configs/feedback.yaml --dataset transfer --phase all
 python -m task5_feedback.compare_feedback --config configs/feedback.yaml
 ```
 
@@ -322,3 +323,47 @@ python -m scripts.aggregate_task4 --config configs/feedback.yaml
 These entry points (`generate.py`, `judge.py`, `sample_audit.py`, `score_audit.py`) implement the Task 4 evaluation on top of the released utilities: `judge.py` reuses `judge_responses.load_judge`/`judge_one`/`JUDGE_PROMPT` unmodified (no student-authored judge prompt), and `sample_audit.py` reuses `make_audit_sheet.fixed_audit_ids` for the identical reproducible subset.
 
 Code attribution: portions of the Task 4 evaluation/aggregation code were implemented with coding assistance from an LLM (Anthropic Claude); all submitted code was reviewed, tested, and is understood by the author, who is responsible for every line. The AI safety judge, its prompt, and its parser are course-supplied. The PDF report is written entirely by the author without AI assistance (see §9).
+
+## 14. Task 5 run sequence (ordered)
+
+All runnable as `python -m ...` from the repo root; output goes to `results/task5_feedback/`. Three **fixed** frozen policies, no retraining: **SFT** = untouched `Qwen2.5-1.5B-Instruct` (no adapter), **RLVR** = `checkpoints/rlvr_policy`, **RLAIF** = `checkpoints/rlaif_policy`. The exact verifier (`task5_feedback/rlvr.py::exact_reward`) and the fixed pairwise AI judge (`task5_feedback/rlaif.py::PairwiseAIJudge`, `Qwen2.5-3B-Instruct`) are course-supplied and unmodified. Decoding is deterministic greedy (`eval_do_sample: false`, `math_max_new_tokens = 512`); `evaluate_math.py` fails loudly if `eval_do_sample` is unset. Every GPU phase is crash-tolerant and resumable (per-row/per-pair append, skip ids already present), and generation (policy models) is a separate phase from judging (the 3B judge) so the two are never co-resident on the L4. The judge caches every pairwise verdict on `{problem, response_a, response_b}`, so a re-run is near-free.
+
+**Two reward sources are reported on separate scales and never aggregated into one number:** the binary verifier reward `{0,1}` and the `[0,1]` pairwise win rate live in separate tables, separate CSV rows, and separate figure panels throughout.
+
+```bash
+# --- CPU, seconds, BEFORE any GPU run ---------------------------------------
+# Verifier correctness oracle + both discriminating self-tests (corrupted gold_final trips the
+# self-check with the right problem_id; a '#### 42' gold raises instead of silently scoring 0%).
+python -m task5_feedback.score_perturbations --config configs/feedback.yaml --self-test
+# Confirm the eval-set schemas (prompt/question/gold_final) before spending GPU on generation.
+python -m task5_feedback.evaluate_math --config configs/feedback.yaml --peek
+# Train/eval leakage check: do the RL training prompt indices intersect gsm8k_eval? (context for
+# whether in-domain accuracy is partly train accuracy).
+python -m scripts.check_task5_train_eval_overlap --config configs/feedback.yaml
+
+# --- GPU: in-domain GSM8K (n=300) -------------------------------------------
+# generate = 3 policy models (SFT/RLVR/RLAIF), one greedy response/prompt (~8-15 min on L4,
+#   includes model loads); score = 3B judge, pairwise vs SFT + metrics (~3-6 min).
+python -m task5_feedback.evaluate_math --config configs/feedback.yaml --dataset gsm --phase generate
+python -m task5_feedback.evaluate_math --config configs/feedback.yaml --dataset gsm --phase score
+
+# --- GPU: controlled diagnostic (100 responses, verifier + judge) -----------
+# verifier-only is CPU (seconds); the judge pass is the 3B model over 4 pairings x 20 (~2-4 min).
+python -m task5_feedback.score_perturbations --config configs/feedback.yaml --mechanism verifier
+python -m task5_feedback.score_perturbations --config configs/feedback.yaml --mechanism judge
+
+# --- GPU: out-of-domain SVAMP transfer (n=100) ------------------------------
+# ~5-9 min (generate 3 policies + judge). Fills exact_acc_drop_vs_gsm from task5_gsm.json.
+python -m task5_feedback.evaluate_math --config configs/feedback.yaml --dataset transfer --phase all
+
+# --- CPU, pure read: synthesis, aggregate tables + figures, qualitative dump -
+python -m task5_feedback.compare_feedback --config configs/feedback.yaml
+python -m scripts.aggregate_task5 --config configs/feedback.yaml
+python -m scripts.dump_task5_qualitative --config configs/feedback.yaml
+```
+
+Approximate wall-clock is L4-based and generation-dominated; the judge phases record measured wall-clock (`elapsed_s_last_run`) and compare-call counts in `diagnostic_judge_meta.json` and in each policy's `pairwise` block, so the real inference cost is available after the first cold run. A warm judge cache makes any re-run of the score/judge phases near-instant.
+
+Outputs: `evaluate_math.py` writes `gen_{gsm,transfer}_{policy}.jsonl`, `pairwise_{gsm,transfer}_{rlvr,rlaif}.jsonl`, `task5_{gsm,transfer}.{json,csv}`, `eval_meta_{gsm,transfer}.json`; `score_perturbations.py` writes `diagnostic_judge_pairs.jsonl`, `task5_sensitivity.json`, `task5_diagnostic_{verifier,judge}_pairs.csv`, `diagnostic_judge_meta.json`; `compare_feedback.py` writes `task5_comparison.json`; `aggregate_task5.py` writes `task5_indomain.csv`, `task5_diagnostic.csv`, `task5_ood.csv`, `task5_caps.csv`, `task5_aggregate.json` and the figures `task5_indomain.png`, `task5_diagnostic.png`, `task5_sensitivity.png`, `task5_transfer.png`; `dump_task5_qualitative.py` writes `task5_qual_vj_disagreements.csv` and `task5_qual_diagnostic.csv`; `check_task5_train_eval_overlap.py` writes `train_eval_overlap.json`. Every reported number traces to one of these files and the command above that produced it.
+
+Code attribution: portions of the Task 5 evaluation/analysis/aggregation code were implemented with coding assistance from an LLM (Anthropic Claude); all submitted code was reviewed, tested, and is understood by the author, who is responsible for every line. The exact RLVR verifier, the fixed pairwise AI judge (`Qwen2.5-3B-Instruct`), and the data/model loaders are course-supplied and unmodified. The pairwise-judge call-count/wall-clock accounting and the position-bias partition are author-added analysis on top of the supplied judge. No other external code is materially reused. The PDF report is written entirely by the author without AI assistance (see §9).
