@@ -237,22 +237,42 @@ def run_verifier_pairings(groups):
 REMAP = {"A": "B", "B": "A", "TIE": "TIE"}
 
 
-def judge_semantic_preference(judge, problem, resp_a, resp_b):
-    """Preference in semantic terms (A = resp_a) with position-bias control.
+def _phys_swap(judge, problem, a, b):
+    """Physical orientation bit compare() will use for (problem, a, b). Reuses the
+    judge's OWN _key so this cannot drift from the swap at rlaif.py:80."""
+    return int(judge._key(problem, a, b)[:8], 16) % 2 == 1
 
-    rlaif.PairwiseAIJudge.compare picks ONE physical orientation per pair
-    (deterministic hash swap), so a single call does not average position. We
-    present both argument orders and only count a preference when they agree;
-    an opposite-decisive flip is a position-bias disagreement, a tie-vs-decisive
+
+def judge_semantic_preference(judge, problem, resp_a, resp_b):
+    """Preference in semantic terms (A = resp_a) with EXACT position-bias control.
+
+    compare() shows each pair in one physical orientation fixed by a hash swap
+    (rlaif.py:80-81), then un-swaps the verdict. The two argument orders
+    compare(a,b) and compare(b,a) hit OPPOSITE physical orientations iff their
+    swap bits are equal (s1 == s2) -- that, and only that, is the position-tested
+    case. When s1 != s2 both calls send a byte-identical prompt, so under greedy
+    decoding the second call is redundant: skip it, reuse the first verdict, and
+    carry no position information.
+
+    On tested pairs we count a preference only when both orders agree; an
+    opposite-decisive flip is a position-bias disagreement, a tie-vs-decisive
     mismatch is a soft disagreement. Any mismatch collapses to TIE.
+
+    Returns (pref, r_ab, r_ba_semantic, info).
     """
+    tested = _phys_swap(judge, problem, resp_a, resp_b) == _phys_swap(judge, problem, resp_b, resp_a)
     r_ab = judge.compare(problem, resp_a, resp_b)          # terms of (A=resp_a, B=resp_b)
+    if not tested:
+        # Second call would be a byte-identical prompt -> same semantic verdict.
+        return r_ab, r_ab, r_ab, {"tested": False, "skipped": True,
+                                  "position_flip": False, "soft": False}
     r_ba = REMAP[judge.compare(problem, resp_b, resp_a)]   # remap (A=resp_b,..) back to resp_a terms
     if r_ab == r_ba:
-        return r_ab, r_ab, {}
+        return r_ab, r_ab, r_ba, {"tested": True, "skipped": False,
+                                  "position_flip": False, "soft": False}
     flip = {r_ab, r_ba} == {"A", "B"}
-    kind = {"position_flip": flip, "soft": not flip}
-    return "TIE", (r_ab, r_ba), kind
+    return "TIE", r_ab, r_ba, {"tested": True, "skipped": False,
+                               "position_flip": flip, "soft": not flip}
 
 
 def _done_pair_keys(path):
@@ -282,6 +302,7 @@ def run_judge_pairings(cfg, groups, out_jsonl, cache_path, resume=True):
     judge = PairwiseAIJudge(cfg, cache_path)
 
     timer = wall_timer()
+    skipped = 0
     for name, (va, vb) in PAIRINGS.items():
         for pid in sorted(groups, key=lambda x: int(x)):
             key = f"{name}|{pid}"
@@ -290,17 +311,20 @@ def run_judge_pairings(cfg, groups, out_jsonl, cache_path, resume=True):
             a, b = groups[pid][va], groups[pid][vb]
             problem = a["question"]
             assert problem == b["question"], f"question mismatch within problem {pid}"
-            pref, raw, kind = judge_semantic_preference(judge, problem, a["response"], b["response"])
-            r_ab, r_ba = (raw if isinstance(raw, tuple) else (raw, raw))
+            pref, r_ab, r_ba, info = judge_semantic_preference(judge, problem, a["response"], b["response"])
+            skipped += int(info["skipped"])
             append_jsonl(out_jsonl, {
                 "pairing": name, "problem_id": pid,
                 "variant_A": va, "variant_B": vb,
                 "r_ab": r_ab, "r_ba_semantic": r_ba, "pref": pref,
-                "position_flip": bool(kind.get("position_flip", False)),
-                "soft_disagreement": bool(kind.get("soft", False)),
+                "position_tested": bool(info["tested"]),
+                "skipped_second_call": bool(info["skipped"]),
+                "position_flip": bool(info["position_flip"]),
+                "soft_disagreement": bool(info["soft"]),
                 "style_B": b.get("style", ""), "reasoning_quality_B": b.get("reasoning_quality", ""),
             })
-    print(f"[Step D] judge pairings done in {timer():.1f}s -> {out_jsonl}")
+    print(f"[Step D] judge pairings done in {timer():.1f}s -> {out_jsonl} "
+          f"(skipped {skipped} redundant second calls this run)")
 
     # Reload the full log (resumed + new) and assert no pair was lost.
     records = read_jsonl(out_jsonl)
@@ -328,24 +352,43 @@ def aggregate_judge(records):
             buckets[rec.get(axis + "_B", "")].append(rec["pref"])
         return {k: rates_from_prefs(v) for k, v in sorted(buckets.items())}
 
-    position_flips = sum(1 for r in records if r.get("position_flip"))
-    soft = sum(1 for r in records if r.get("soft_disagreement"))
+    # Position bias is only observable on pairs the two argument orders actually
+    # present in OPPOSITE physical orientations (position_tested). The rest send
+    # a byte-identical prompt, so they can never disagree -- including them would
+    # dilute the disagreement rate toward 0 by construction. Report over the
+    # tested subset only, and state tested_n.
+    tested = [r for r in records if r.get("position_tested")]
+    untested_n = len(records) - len(tested)
+    position_flips = sum(1 for r in tested if r.get("position_flip"))
+    soft = sum(1 for r in tested if r.get("soft_disagreement"))
+    tested_n = len(tested)
+    disagreement_rate_tested = (position_flips + soft) / tested_n if tested_n else None
     return {
         "scale": "pairwise preference, win space [0,1]; A/B/TIE consensus over BOTH argument orders",
         "orientation_finding": (
             "rlaif.py:80-81 picks one physical orientation per pair via int(key[:8],16)%2 and "
-            "un-swaps the verdict (:98-99): deterministically balanced ACROSS distinct pairs, but a "
-            "single compare() shows each pair once. We therefore present both argument orders and only "
-            "count a preference on agreement; opposite-decisive flips are position-bias disagreements. "
-            "Caveat: the internal swap is re-hashed per argument order, so the two calls coincide "
-            "physically ~50% of the time -- this is an approximate, not guaranteed, both-orders test."
+            "un-swaps the verdict (:98-99): balanced ACROSS distinct pairs, one orientation per call. "
+            "compare(a,b) and compare(b,a) hit opposite physical orientations iff their swap bits are "
+            "equal (s1==s2) -- the position-tested case, computed exactly from the judge's own _key. "
+            "When s1!=s2 the second call is a byte-identical prompt and is skipped. Disagreement rates "
+            "below are over the tested subset only."
         ),
         "cache_key_finding": (
             "rlaif.py:67-72 _key hashes {model, problem, a, b} -- problem AND both response texts. "
             "SFT-vs-RLVR and SFT-vs-RLAIF cannot collide."
         ),
-        "position_disagreement_count": position_flips,
-        "soft_disagreement_count": soft,
+        "position_tested_n": tested_n,
+        "position_untested_n": untested_n,  # == redundant second calls skipped
+        "position_disagreement_count": position_flips,   # over tested subset only
+        "soft_disagreement_count": soft,                 # over tested subset only
+        "position_disagreement_rate_tested": disagreement_rate_tested,
+        "caveats": {
+            "gold_distractor": (
+                "gold_distractor_wrong_final is 2 lines vs clean_correct's 5; a clean-preference "
+                "here is confounded with judge length bias and must NOT be read as distractor "
+                "detection with this set."
+            ),
+        },
         "pairings": pairings,
         "S_reason": pairings["S_reason"]["better"],
         "S_outcome": pairings["S_outcome"]["better"],
@@ -442,12 +485,19 @@ def main():
         write_pairs_csv(
             outdir / "task5_diagnostic_judge_pairs.csv", records,
             ["pairing", "problem_id", "variant_A", "variant_B",
-             "r_ab", "r_ba_semantic", "pref", "position_flip", "soft_disagreement",
-             "style_B", "reasoning_quality_B"],
+             "r_ab", "r_ba_semantic", "pref", "position_tested", "skipped_second_call",
+             "position_flip", "soft_disagreement", "style_B", "reasoning_quality_B"],
         )
         j = result["judge"]
         print(f"[judge] S_reason={j['S_reason']}  S_outcome={j['S_outcome']}  "
-              f"position_flips={j['position_disagreement_count']}  soft={j['soft_disagreement_count']}")
+              f"position_tested_n={j['position_tested_n']} (untested/skipped={j['position_untested_n']})  "
+              f"disagreement_rate_tested={j['position_disagreement_rate_tested']} "
+              f"(flips={j['position_disagreement_count']} soft={j['soft_disagreement_count']})")
+        # gold_distractor is 2 lines vs clean's 5: a clean-preference here cannot be
+        # separated from a judge length bias with this set -- flag, don't over-read.
+        gd = j["pairings"]["gold_distractor"]
+        print(f"[judge] NOTE gold_distractor better={gd['better']} wrong={gd['wrong']} -- "
+              "length confound (2 vs 5 lines); not read as distractor detection.")
 
     # Verifier (binary) and judge (win-rate) rates are kept in separate sections
     # on separate scales -- never aggregated into one number or one axis.
