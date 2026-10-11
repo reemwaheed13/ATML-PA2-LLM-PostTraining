@@ -114,5 +114,36 @@
         "n": 20
       }
     }
+  },
+  "verifier": {
+    "scale": "binary exact reward in {0,1}; prefer A iff R(A) > R(B)",
+    "pairings": {
+      "S_reason": {
+        "better": 0.0,
+        "tie": 1.0,
+        "wrong": 0.0,
+        "n": 20
+      },
+      "S_outcome": {
+        "better": 1.0,
+        "tie": 0.0,
+        "wrong": 0.0,
+        "n": 20
+      },
+      "filler_control": {
+        "better": 0.0,
+        "tie": 1.0,
+        "wrong": 0.0,
+        "n": 20
+      },
+      "gold_distractor": {
+        "better": 1.0,
+        "tie": 0.0,
+        "wrong": 0.0,
+        "n": 20
+      }
+    },
+    "S_reason": 0.0,
+    "S_outcome": 1.0
   }
 }

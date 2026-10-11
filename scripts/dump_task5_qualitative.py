@@ -69,14 +69,14 @@ def diagnostic_examples(outdir, diag_path, per_pairing):
     by_key = {(str(r["problem_id"]), r["variant_type"]): r for r in diag}
 
     def rank(row):  # lower sorts first -> most report-worthy failure first
-        if row.judge_pref == "B":
+        if row.pref == "B":
             return (0, int(row.problem_id))          # judge wrong-preference
         if bool(row.get("position_flip", False)):
             return (1, int(row.problem_id))          # position-bias flip
         return (2, int(row.problem_id))
 
     def reason(row):
-        if row.judge_pref == "B":
+        if row.pref == "B":
             return "judge wrong-preference (prefers perturbed)"
         if bool(row.get("position_flip", False)):
             return "position-bias flip"
@@ -93,7 +93,7 @@ def diagnostic_examples(outdir, diag_path, per_pairing):
         out.append({
             "pairing": r.pairing, "problem_id": pid,
             "variant_A": r.variant_A, "variant_B": r.variant_B,
-            "judge_pref": r.judge_pref, "position_tested": r.get("position_tested"),
+            "judge_pref": r.pref, "position_tested": r.get("position_tested"),
             "position_flip": r.get("position_flip"),
             "style_B": r.get("style_B"), "reasoning_quality_B": r.get("reasoning_quality_B"),
             "selection_reason": r.selection_reason,

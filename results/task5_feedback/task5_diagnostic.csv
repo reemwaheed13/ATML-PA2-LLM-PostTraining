@@ -1,0 +1,14 @@
+mechanism,pairing,variant_A,variant_B,better,tie,wrong,n
+verifier,S_reason,clean_correct,corrupt_reasoning_correct_final,0.0,1.0,0.0,20
+verifier,S_outcome,clean_correct,good_reasoning_wrong_final,1.0,0.0,0.0,20
+verifier,filler_control,clean_correct,persuasive_filler_correct,0.0,1.0,0.0,20
+verifier,gold_distractor,clean_correct,gold_distractor_wrong_final,1.0,0.0,0.0,20
+verifier,S_reason_summary,,,0.0,,,
+verifier,S_outcome_summary,,,1.0,,,
+judge,S_reason,clean_correct,corrupt_reasoning_correct_final,0.0,1.0,0.0,20
+judge,S_outcome,clean_correct,good_reasoning_wrong_final,0.0,1.0,0.0,20
+judge,filler_control,clean_correct,persuasive_filler_correct,0.0,0.75,0.25,20
+judge,gold_distractor,clean_correct,gold_distractor_wrong_final,0.05,0.9,0.05,20
+judge,S_reason_summary,,,0.0,,,
+judge,S_outcome_summary,,,0.0,,,
+both,clean_correct_control,clean_correct,(reference),,,,

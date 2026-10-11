@@ -1,0 +1,180 @@
+{
+  "note": "verifier reward is binary {0,1}; judge win rate is [0,1]; never aggregated together.",
+  "scales": {
+    "verifier": "binary exact reward {0,1}",
+    "judge": "pairwise win rate [0,1]"
+  },
+  "in_domain": {
+    "sft": {
+      "verifier": {
+        "exact_acc": 0.29,
+        "exact_acc_diag20": null,
+        "exact_acc_other280": null,
+        "exact_acc_seen59": null,
+        "exact_acc_unseen241": null,
+        "n_seen": null,
+        "n_unseen": null
+      },
+      "format_compliance": 0.36,
+      "mean_response_tokens": 275.59,
+      "std_response_tokens": 87.04976680037689
+    },
+    "rlvr": {
+      "verifier": {
+        "exact_acc": 0.29333333333333333,
+        "exact_acc_diag20": null,
+        "exact_acc_other280": null,
+        "exact_acc_seen59": null,
+        "exact_acc_unseen241": null,
+        "n_seen": null,
+        "n_unseen": null
+      },
+      "format_compliance": 0.36666666666666664,
+      "mean_response_tokens": 275.1333333333333,
+      "std_response_tokens": 87.60206745404027,
+      "judge": {
+        "win_rate_vs_sft": 0.5,
+        "win": 3,
+        "tie": 294,
+        "loss": 3
+      },
+      "verifier_judge_agreement": {
+        "verifier_strict_n": 9,
+        "agree": 0,
+        "disagree_decisive": 0,
+        "judge_tie": 9,
+        "agreement_tie_is_disagree": 0.0,
+        "agreement_ties_excluded": null
+      }
+    },
+    "rlaif": {
+      "verifier": {
+        "exact_acc": 0.2733333333333333,
+        "exact_acc_diag20": null,
+        "exact_acc_other280": null,
+        "exact_acc_seen59": null,
+        "exact_acc_unseen241": null,
+        "n_seen": null,
+        "n_unseen": null
+      },
+      "format_compliance": 0.35,
+      "mean_response_tokens": 273.75333333333333,
+      "std_response_tokens": 85.20711524801722,
+      "judge": {
+        "win_rate_vs_sft": 0.49666666666666665,
+        "win": 0,
+        "tie": 298,
+        "loss": 2
+      },
+      "verifier_judge_agreement": {
+        "verifier_strict_n": 7,
+        "agree": 0,
+        "disagree_decisive": 0,
+        "judge_tie": 7,
+        "agreement_tie_is_disagree": 0.0,
+        "agreement_ties_excluded": null
+      }
+    }
+  },
+  "verifier_tie_region": {
+    "description": "diagnostic pairings where the verifier ties (both parse to the same correct final); the judge's better/tie/wrong here is resolution the binary verifier structurally lacks.",
+    "verifier": {
+      "S_reason": {
+        "better": 0.0,
+        "tie": 1.0,
+        "wrong": 0.0,
+        "n": 20
+      },
+      "filler_control": {
+        "better": 0.0,
+        "tie": 1.0,
+        "wrong": 0.0,
+        "n": 20
+      }
+    },
+    "judge": {
+      "S_reason": {
+        "variant_A": "clean_correct",
+        "variant_B": "corrupt_reasoning_correct_final",
+        "better": 0.0,
+        "tie": 1.0,
+        "wrong": 0.0,
+        "n": 20
+      },
+      "filler_control": {
+        "variant_A": "clean_correct",
+        "variant_B": "persuasive_filler_correct",
+        "better": 0.0,
+        "tie": 0.75,
+        "wrong": 0.25,
+        "n": 20
+      }
+    },
+    "S_reason_verifier": 0.0,
+    "S_reason_judge": 0.0
+  },
+  "out_of_domain": {
+    "sft": {
+      "exact_acc": 0.47,
+      "exact_acc_drop_vs_gsm_full": -0.18,
+      "exact_acc_drop_vs_gsm_unseen": null,
+      "mean_response_tokens": 163.94,
+      "win_rate_vs_sft": null
+    },
+    "rlvr": {
+      "exact_acc": 0.44,
+      "exact_acc_drop_vs_gsm_full": -0.14666666666666667,
+      "exact_acc_drop_vs_gsm_unseen": null,
+      "mean_response_tokens": 162.84,
+      "win_rate_vs_sft": 0.5
+    },
+    "rlaif": {
+      "exact_acc": 0.44,
+      "exact_acc_drop_vs_gsm_full": -0.16666666666666669,
+      "exact_acc_drop_vs_gsm_unseen": null,
+      "mean_response_tokens": 163.16,
+      "win_rate_vs_sft": 0.495
+    }
+  },
+  "feedback_source": {
+    "verifier_RLVR": {
+      "coverage": "outcome only; blind to reasoning-only corruption (S_reason better=0.0, all-tie by design)",
+      "noise": "none (deterministic exact match)",
+      "exploitability": {
+        "gold_distractor_wrong_preference": 0.0,
+        "note": "parser must score the discarded gold number 0; wrong-pref should be 0.0"
+      },
+      "inference_cost_model_calls": 0
+    },
+    "judge_RLAIF": {
+      "coverage": "reasoning + style; S_reason better=0.0 (> verifier's 0.0)",
+      "noise": {
+        "position_disagreement_rate_tested": 0.19047619047619047,
+        "position_tested_n": 42
+      },
+      "exploitability": {
+        "filler_wrong_preference": 0.25,
+        "gold_distractor_wrong_preference": 0.05,
+        "gold_distractor_caveat": "gold_distractor_wrong_final is 2 lines vs clean_correct's 5; a clean-preference here is confounded with judge length bias and must NOT be read as distractor detection with this set."
+      },
+      "inference_cost": {
+        "diagnostic_compare_calls": 122,
+        "diagnostic_compare_calls_by_pairing": {
+          "S_reason": 27,
+          "S_outcome": 34,
+          "filler_control": 30,
+          "gold_distractor": 31
+        },
+        "diagnostic_elapsed_s_last_run": 26.808755846999702,
+        "indomain_compare_calls": {
+          "rlvr": 568,
+          "rlaif": 576
+        },
+        "indomain_elapsed_s_last_run": {
+          "rlvr": 84.36647328100025,
+          "rlaif": 19.022446796999247
+        }
+      }
+    }
+  }
+}

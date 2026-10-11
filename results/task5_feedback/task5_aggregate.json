@@ -1,0 +1,326 @@
+{
+  "policies": [
+    "sft",
+    "rlvr",
+    "rlaif"
+  ],
+  "scales_note": "verifier reward binary {0,1}; judge win rate [0,1]; never one aggregate.",
+  "in_domain": {
+    "sft": {
+      "n": 300,
+      "exact_acc": 0.29,
+      "format_compliance": 0.36,
+      "mean_response_tokens": 275.59,
+      "std_response_tokens": 87.04976680037689,
+      "truncated": 6,
+      "truncated_no_final": 6,
+      "diagnostic_split": {
+        "overlap_ids": 20,
+        "diagnostic_ids_total": 20,
+        "exact_acc_diag20": 0.4,
+        "n_diag20": 20,
+        "exact_acc_other280": 0.28214285714285714,
+        "n_other": 280
+      }
+    },
+    "rlvr": {
+      "n": 300,
+      "exact_acc": 0.29333333333333333,
+      "format_compliance": 0.36666666666666664,
+      "mean_response_tokens": 275.1333333333333,
+      "std_response_tokens": 87.60206745404027,
+      "truncated": 7,
+      "truncated_no_final": 7,
+      "diagnostic_split": {
+        "overlap_ids": 20,
+        "diagnostic_ids_total": 20,
+        "exact_acc_diag20": 0.4,
+        "n_diag20": 20,
+        "exact_acc_other280": 0.2857142857142857,
+        "n_other": 280
+      },
+      "pairwise": {
+        "n": 300,
+        "win": 3,
+        "loss": 3,
+        "tie": 294,
+        "win_rate_vs_sft": 0.5,
+        "verifier_judge_agreement": 0.0,
+        "verifier_strict_n": 9,
+        "position_tested_n": 268,
+        "position_untested_n": 32,
+        "position_disagreement_count": 7,
+        "soft_disagreement_count": 3,
+        "n_compare_calls": 568,
+        "elapsed_s_last_run": 84.36647328100025
+      }
+    },
+    "rlaif": {
+      "n": 300,
+      "exact_acc": 0.2733333333333333,
+      "format_compliance": 0.35,
+      "mean_response_tokens": 273.75333333333333,
+      "std_response_tokens": 85.20711524801722,
+      "truncated": 5,
+      "truncated_no_final": 5,
+      "diagnostic_split": {
+        "overlap_ids": 20,
+        "diagnostic_ids_total": 20,
+        "exact_acc_diag20": 0.4,
+        "n_diag20": 20,
+        "exact_acc_other280": 0.2642857142857143,
+        "n_other": 280
+      },
+      "pairwise": {
+        "n": 300,
+        "win": 0,
+        "loss": 2,
+        "tie": 298,
+        "win_rate_vs_sft": 0.49666666666666665,
+        "verifier_judge_agreement": 0.0,
+        "verifier_strict_n": 7,
+        "position_tested_n": 276,
+        "position_untested_n": 24,
+        "position_disagreement_count": 7,
+        "soft_disagreement_count": 2,
+        "n_compare_calls": 576,
+        "elapsed_s_last_run": 19.022446796999247
+      }
+    }
+  },
+  "diagnostic": {
+    "verifier": {
+      "scale": "binary exact reward in {0,1}; prefer A iff R(A) > R(B)",
+      "pairings": {
+        "S_reason": {
+          "better": 0.0,
+          "tie": 1.0,
+          "wrong": 0.0,
+          "n": 20
+        },
+        "S_outcome": {
+          "better": 1.0,
+          "tie": 0.0,
+          "wrong": 0.0,
+          "n": 20
+        },
+        "filler_control": {
+          "better": 0.0,
+          "tie": 1.0,
+          "wrong": 0.0,
+          "n": 20
+        },
+        "gold_distractor": {
+          "better": 1.0,
+          "tie": 0.0,
+          "wrong": 0.0,
+          "n": 20
+        }
+      },
+      "S_reason": 0.0,
+      "S_outcome": 1.0
+    },
+    "judge": {
+      "scale": "pairwise preference, win space [0,1]; A/B/TIE consensus over BOTH argument orders",
+      "orientation_finding": "rlaif.py:80-81 picks one physical orientation per pair via int(key[:8],16)%2 and un-swaps the verdict (:98-99): balanced ACROSS distinct pairs, one orientation per call. compare(a,b) and compare(b,a) hit opposite physical orientations iff their swap bits are equal (s1==s2) -- the position-tested case, computed exactly from the judge's own _key. When s1!=s2 the second call is a byte-identical prompt and is skipped. Disagreement rates below are over the tested subset only.",
+      "cache_key_finding": "rlaif.py:67-72 _key hashes {model, problem, a, b} -- problem AND both response texts. SFT-vs-RLVR and SFT-vs-RLAIF cannot collide.",
+      "position_tested_n": 42,
+      "position_untested_n": 38,
+      "position_disagreement_count": 0,
+      "soft_disagreement_count": 8,
+      "position_disagreement_rate_tested": 0.19047619047619047,
+      "caveats": {
+        "gold_distractor": "gold_distractor_wrong_final is 2 lines vs clean_correct's 5; a clean-preference here is confounded with judge length bias and must NOT be read as distractor detection with this set."
+      },
+      "pairings": {
+        "S_reason": {
+          "variant_A": "clean_correct",
+          "variant_B": "corrupt_reasoning_correct_final",
+          "better": 0.0,
+          "tie": 1.0,
+          "wrong": 0.0,
+          "n": 20
+        },
+        "S_outcome": {
+          "variant_A": "clean_correct",
+          "variant_B": "good_reasoning_wrong_final",
+          "better": 0.0,
+          "tie": 1.0,
+          "wrong": 0.0,
+          "n": 20
+        },
+        "filler_control": {
+          "variant_A": "clean_correct",
+          "variant_B": "persuasive_filler_correct",
+          "better": 0.0,
+          "tie": 0.75,
+          "wrong": 0.25,
+          "n": 20
+        },
+        "gold_distractor": {
+          "variant_A": "clean_correct",
+          "variant_B": "gold_distractor_wrong_final",
+          "better": 0.05,
+          "tie": 0.9,
+          "wrong": 0.05,
+          "n": 20
+        }
+      },
+      "S_reason": 0.0,
+      "S_outcome": 0.0,
+      "breakdown_by_style": {
+        "clean": {
+          "better": 0.0,
+          "tie": 1.0,
+          "wrong": 0.0,
+          "n": 40
+        },
+        "distractor": {
+          "better": 0.05,
+          "tie": 0.9,
+          "wrong": 0.05,
+          "n": 20
+        },
+        "persuasive_filler": {
+          "better": 0.0,
+          "tie": 0.75,
+          "wrong": 0.25,
+          "n": 20
+        }
+      },
+      "breakdown_by_reasoning_quality": {
+        "correct": {
+          "better": 0.0,
+          "tie": 0.75,
+          "wrong": 0.25,
+          "n": 20
+        },
+        "corrupted": {
+          "better": 0.0,
+          "tie": 1.0,
+          "wrong": 0.0,
+          "n": 20
+        },
+        "incorrect": {
+          "better": 0.05,
+          "tie": 0.9,
+          "wrong": 0.05,
+          "n": 20
+        },
+        "mostly_correct": {
+          "better": 0.0,
+          "tie": 1.0,
+          "wrong": 0.0,
+          "n": 20
+        }
+      }
+    }
+  },
+  "out_of_domain": {
+    "sft": {
+      "n": 100,
+      "exact_acc": 0.47,
+      "format_compliance": 0.6,
+      "mean_response_tokens": 163.94,
+      "std_response_tokens": 72.38975341856056,
+      "truncated": 0,
+      "truncated_no_final": 0,
+      "exact_acc_drop_vs_gsm_full": -0.18
+    },
+    "rlvr": {
+      "n": 100,
+      "exact_acc": 0.44,
+      "format_compliance": 0.57,
+      "mean_response_tokens": 162.84,
+      "std_response_tokens": 70.08077054370906,
+      "truncated": 0,
+      "truncated_no_final": 0,
+      "pairwise": {
+        "n": 100,
+        "win": 0,
+        "loss": 0,
+        "tie": 100,
+        "win_rate_vs_sft": 0.5,
+        "verifier_judge_agreement": 0.0,
+        "verifier_strict_n": 3,
+        "position_tested_n": 95,
+        "position_untested_n": 5,
+        "position_disagreement_count": 19,
+        "soft_disagreement_count": 1,
+        "n_compare_calls": 195,
+        "elapsed_s_last_run": 25.568606720999924
+      },
+      "exact_acc_drop_vs_gsm_full": -0.14666666666666667
+    },
+    "rlaif": {
+      "n": 100,
+      "exact_acc": 0.44,
+      "format_compliance": 0.57,
+      "mean_response_tokens": 163.16,
+      "std_response_tokens": 70.26360651147932,
+      "truncated": 0,
+      "truncated_no_final": 0,
+      "pairwise": {
+        "n": 100,
+        "win": 0,
+        "loss": 1,
+        "tie": 99,
+        "win_rate_vs_sft": 0.495,
+        "verifier_judge_agreement": 0.0,
+        "verifier_strict_n": 3,
+        "position_tested_n": 96,
+        "position_untested_n": 4,
+        "position_disagreement_count": 19,
+        "soft_disagreement_count": 0,
+        "n_compare_calls": 196,
+        "elapsed_s_last_run": 2.759624219999978
+      },
+      "exact_acc_drop_vs_gsm_full": -0.16666666666666669
+    }
+  },
+  "judge_inference_cost": {
+    "ai_judge_model": "Qwen/Qwen2.5-3B-Instruct",
+    "elapsed_s_last_run": 26.808755846999702,
+    "n_pairs": 80,
+    "n_compare_calls_total": 122,
+    "n_compare_calls_by_pairing": {
+      "S_reason": 27,
+      "S_outcome": 34,
+      "filler_control": 30,
+      "gold_distractor": 31
+    },
+    "note": "compare() calls = model calls on a cold cache; elapsed excludes resumed pairs."
+  },
+  "position_bias": {
+    "diagnostic": {
+      "position_tested_n": 42,
+      "position_untested_n": 38,
+      "position_disagreement_count": 0,
+      "position_disagreement_rate_tested": 0.19047619047619047
+    },
+    "in_domain": {
+      "rlvr": {
+        "position_tested_n": 268,
+        "position_untested_n": 32,
+        "position_disagreement_count": 7
+      },
+      "rlaif": {
+        "position_tested_n": 276,
+        "position_untested_n": 24,
+        "position_disagreement_count": 7
+      }
+    }
+  },
+  "checklist_coverage": {
+    "in_domain_exact_acc": true,
+    "in_domain_pairwise": true,
+    "in_domain_format": true,
+    "in_domain_length_mean_and_sd": true,
+    "in_domain_verifier_judge_agreement": true,
+    "diagnostic_better_tie_wrong_per_mechanism": true,
+    "diagnostic_S_reason_S_outcome": true,
+    "ood_acc_pairwise_length_drop": true,
+    "cap_without_eos_counts": true,
+    "position_untested_and_disagreement_rate": true
+  }
+}

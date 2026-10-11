@@ -1,0 +1,418 @@
+{
+  "summary": {
+    "n_pairs": 20,
+    "max_new_tokens_real": 4,
+    "extra_max_new_tokens": 16,
+    "n_with_explicit_verdict_at4": 20,
+    "explicit_token_breakdown_at4": {
+      "TIE": 19,
+      "B": 1
+    },
+    "n_empty_at4": 0,
+    "n_nonverdict_at4": 0,
+    "n_recovered_with_extra_tokens": 0,
+    "interpretation": "A high n_nonverdict_at4 means the cached ~95% TIE is largely PARSE FAILURE (compare() defaults to TIE), not genuine ties; n_recovered_with_extra_tokens is how much the 4-token cap caused it. Inspect the raw strings: a parsed 'A'/'B' from prose (not a bare verdict token) is a false positive of the \\b(A|B|TIE)\\b parser."
+  },
+  "records": [
+    {
+      "pairing": "S_reason",
+      "problem_id": "23",
+      "variant_A": "clean_correct",
+      "variant_B": "corrupt_reasoning_correct_final",
+      "raw_maxnew4": "TIE",
+      "classify_maxnew4": {
+        "has_explicit_verdict": true,
+        "parsed_token": "TIE",
+        "is_empty": false,
+        "compare_would_return": "TIE"
+      },
+      "raw_maxnew16": "TIE",
+      "classify_extra": {
+        "has_explicit_verdict": true,
+        "parsed_token": "TIE",
+        "is_empty": false,
+        "compare_would_return": "TIE"
+      }
+    },
+    {
+      "pairing": "S_outcome",
+      "problem_id": "23",
+      "variant_A": "clean_correct",
+      "variant_B": "good_reasoning_wrong_final",
+      "raw_maxnew4": "TIE",
+      "classify_maxnew4": {
+        "has_explicit_verdict": true,
+        "parsed_token": "TIE",
+        "is_empty": false,
+        "compare_would_return": "TIE"
+      },
+      "raw_maxnew16": "TIE",
+      "classify_extra": {
+        "has_explicit_verdict": true,
+        "parsed_token": "TIE",
+        "is_empty": false,
+        "compare_would_return": "TIE"
+      }
+    },
+    {
+      "pairing": "filler_control",
+      "problem_id": "23",
+      "variant_A": "clean_correct",
+      "variant_B": "persuasive_filler_correct",
+      "raw_maxnew4": "TIE",
+      "classify_maxnew4": {
+        "has_explicit_verdict": true,
+        "parsed_token": "TIE",
+        "is_empty": false,
+        "compare_would_return": "TIE"
+      },
+      "raw_maxnew16": "TIE",
+      "classify_extra": {
+        "has_explicit_verdict": true,
+        "parsed_token": "TIE",
+        "is_empty": false,
+        "compare_would_return": "TIE"
+      }
+    },
+    {
+      "pairing": "gold_distractor",
+      "problem_id": "23",
+      "variant_A": "clean_correct",
+      "variant_B": "gold_distractor_wrong_final",
+      "raw_maxnew4": "TIE",
+      "classify_maxnew4": {
+        "has_explicit_verdict": true,
+        "parsed_token": "TIE",
+        "is_empty": false,
+        "compare_would_return": "TIE"
+      },
+      "raw_maxnew16": "TIE",
+      "classify_extra": {
+        "has_explicit_verdict": true,
+        "parsed_token": "TIE",
+        "is_empty": false,
+        "compare_would_return": "TIE"
+      }
+    },
+    {
+      "pairing": "S_reason",
+      "problem_id": "103",
+      "variant_A": "clean_correct",
+      "variant_B": "corrupt_reasoning_correct_final",
+      "raw_maxnew4": "TIE",
+      "classify_maxnew4": {
+        "has_explicit_verdict": true,
+        "parsed_token": "TIE",
+        "is_empty": false,
+        "compare_would_return": "TIE"
+      },
+      "raw_maxnew16": "TIE",
+      "classify_extra": {
+        "has_explicit_verdict": true,
+        "parsed_token": "TIE",
+        "is_empty": false,
+        "compare_would_return": "TIE"
+      }
+    },
+    {
+      "pairing": "S_outcome",
+      "problem_id": "103",
+      "variant_A": "clean_correct",
+      "variant_B": "good_reasoning_wrong_final",
+      "raw_maxnew4": "TIE",
+      "classify_maxnew4": {
+        "has_explicit_verdict": true,
+        "parsed_token": "TIE",
+        "is_empty": false,
+        "compare_would_return": "TIE"
+      },
+      "raw_maxnew16": "TIE",
+      "classify_extra": {
+        "has_explicit_verdict": true,
+        "parsed_token": "TIE",
+        "is_empty": false,
+        "compare_would_return": "TIE"
+      }
+    },
+    {
+      "pairing": "filler_control",
+      "problem_id": "103",
+      "variant_A": "clean_correct",
+      "variant_B": "persuasive_filler_correct",
+      "raw_maxnew4": "TIE",
+      "classify_maxnew4": {
+        "has_explicit_verdict": true,
+        "parsed_token": "TIE",
+        "is_empty": false,
+        "compare_would_return": "TIE"
+      },
+      "raw_maxnew16": "TIE",
+      "classify_extra": {
+        "has_explicit_verdict": true,
+        "parsed_token": "TIE",
+        "is_empty": false,
+        "compare_would_return": "TIE"
+      }
+    },
+    {
+      "pairing": "gold_distractor",
+      "problem_id": "103",
+      "variant_A": "clean_correct",
+      "variant_B": "gold_distractor_wrong_final",
+      "raw_maxnew4": "TIE",
+      "classify_maxnew4": {
+        "has_explicit_verdict": true,
+        "parsed_token": "TIE",
+        "is_empty": false,
+        "compare_would_return": "TIE"
+      },
+      "raw_maxnew16": "TIE",
+      "classify_extra": {
+        "has_explicit_verdict": true,
+        "parsed_token": "TIE",
+        "is_empty": false,
+        "compare_would_return": "TIE"
+      }
+    },
+    {
+      "pairing": "S_reason",
+      "problem_id": "113",
+      "variant_A": "clean_correct",
+      "variant_B": "corrupt_reasoning_correct_final",
+      "raw_maxnew4": "TIE",
+      "classify_maxnew4": {
+        "has_explicit_verdict": true,
+        "parsed_token": "TIE",
+        "is_empty": false,
+        "compare_would_return": "TIE"
+      },
+      "raw_maxnew16": "TIE",
+      "classify_extra": {
+        "has_explicit_verdict": true,
+        "parsed_token": "TIE",
+        "is_empty": false,
+        "compare_would_return": "TIE"
+      }
+    },
+    {
+      "pairing": "S_outcome",
+      "problem_id": "113",
+      "variant_A": "clean_correct",
+      "variant_B": "good_reasoning_wrong_final",
+      "raw_maxnew4": "TIE",
+      "classify_maxnew4": {
+        "has_explicit_verdict": true,
+        "parsed_token": "TIE",
+        "is_empty": false,
+        "compare_would_return": "TIE"
+      },
+      "raw_maxnew16": "TIE",
+      "classify_extra": {
+        "has_explicit_verdict": true,
+        "parsed_token": "TIE",
+        "is_empty": false,
+        "compare_would_return": "TIE"
+      }
+    },
+    {
+      "pairing": "filler_control",
+      "problem_id": "113",
+      "variant_A": "clean_correct",
+      "variant_B": "persuasive_filler_correct",
+      "raw_maxnew4": "TIE",
+      "classify_maxnew4": {
+        "has_explicit_verdict": true,
+        "parsed_token": "TIE",
+        "is_empty": false,
+        "compare_would_return": "TIE"
+      },
+      "raw_maxnew16": "TIE",
+      "classify_extra": {
+        "has_explicit_verdict": true,
+        "parsed_token": "TIE",
+        "is_empty": false,
+        "compare_would_return": "TIE"
+      }
+    },
+    {
+      "pairing": "gold_distractor",
+      "problem_id": "113",
+      "variant_A": "clean_correct",
+      "variant_B": "gold_distractor_wrong_final",
+      "raw_maxnew4": "B",
+      "classify_maxnew4": {
+        "has_explicit_verdict": true,
+        "parsed_token": "B",
+        "is_empty": false,
+        "compare_would_return": "B"
+      },
+      "raw_maxnew16": "B",
+      "classify_extra": {
+        "has_explicit_verdict": true,
+        "parsed_token": "B",
+        "is_empty": false,
+        "compare_would_return": "B"
+      }
+    },
+    {
+      "pairing": "S_reason",
+      "problem_id": "289",
+      "variant_A": "clean_correct",
+      "variant_B": "corrupt_reasoning_correct_final",
+      "raw_maxnew4": "TIE",
+      "classify_maxnew4": {
+        "has_explicit_verdict": true,
+        "parsed_token": "TIE",
+        "is_empty": false,
+        "compare_would_return": "TIE"
+      },
+      "raw_maxnew16": "TIE",
+      "classify_extra": {
+        "has_explicit_verdict": true,
+        "parsed_token": "TIE",
+        "is_empty": false,
+        "compare_would_return": "TIE"
+      }
+    },
+    {
+      "pairing": "S_outcome",
+      "problem_id": "289",
+      "variant_A": "clean_correct",
+      "variant_B": "good_reasoning_wrong_final",
+      "raw_maxnew4": "TIE",
+      "classify_maxnew4": {
+        "has_explicit_verdict": true,
+        "parsed_token": "TIE",
+        "is_empty": false,
+        "compare_would_return": "TIE"
+      },
+      "raw_maxnew16": "TIE",
+      "classify_extra": {
+        "has_explicit_verdict": true,
+        "parsed_token": "TIE",
+        "is_empty": false,
+        "compare_would_return": "TIE"
+      }
+    },
+    {
+      "pairing": "filler_control",
+      "problem_id": "289",
+      "variant_A": "clean_correct",
+      "variant_B": "persuasive_filler_correct",
+      "raw_maxnew4": "TIE",
+      "classify_maxnew4": {
+        "has_explicit_verdict": true,
+        "parsed_token": "TIE",
+        "is_empty": false,
+        "compare_would_return": "TIE"
+      },
+      "raw_maxnew16": "TIE",
+      "classify_extra": {
+        "has_explicit_verdict": true,
+        "parsed_token": "TIE",
+        "is_empty": false,
+        "compare_would_return": "TIE"
+      }
+    },
+    {
+      "pairing": "gold_distractor",
+      "problem_id": "289",
+      "variant_A": "clean_correct",
+      "variant_B": "gold_distractor_wrong_final",
+      "raw_maxnew4": "TIE",
+      "classify_maxnew4": {
+        "has_explicit_verdict": true,
+        "parsed_token": "TIE",
+        "is_empty": false,
+        "compare_would_return": "TIE"
+      },
+      "raw_maxnew16": "TIE",
+      "classify_extra": {
+        "has_explicit_verdict": true,
+        "parsed_token": "TIE",
+        "is_empty": false,
+        "compare_would_return": "TIE"
+      }
+    },
+    {
+      "pairing": "S_reason",
+      "problem_id": "299",
+      "variant_A": "clean_correct",
+      "variant_B": "corrupt_reasoning_correct_final",
+      "raw_maxnew4": "TIE",
+      "classify_maxnew4": {
+        "has_explicit_verdict": true,
+        "parsed_token": "TIE",
+        "is_empty": false,
+        "compare_would_return": "TIE"
+      },
+      "raw_maxnew16": "TIE",
+      "classify_extra": {
+        "has_explicit_verdict": true,
+        "parsed_token": "TIE",
+        "is_empty": false,
+        "compare_would_return": "TIE"
+      }
+    },
+    {
+      "pairing": "S_outcome",
+      "problem_id": "299",
+      "variant_A": "clean_correct",
+      "variant_B": "good_reasoning_wrong_final",
+      "raw_maxnew4": "TIE",
+      "classify_maxnew4": {
+        "has_explicit_verdict": true,
+        "parsed_token": "TIE",
+        "is_empty": false,
+        "compare_would_return": "TIE"
+      },
+      "raw_maxnew16": "TIE",
+      "classify_extra": {
+        "has_explicit_verdict": true,
+        "parsed_token": "TIE",
+        "is_empty": false,
+        "compare_would_return": "TIE"
+      }
+    },
+    {
+      "pairing": "filler_control",
+      "problem_id": "299",
+      "variant_A": "clean_correct",
+      "variant_B": "persuasive_filler_correct",
+      "raw_maxnew4": "TIE",
+      "classify_maxnew4": {
+        "has_explicit_verdict": true,
+        "parsed_token": "TIE",
+        "is_empty": false,
+        "compare_would_return": "TIE"
+      },
+      "raw_maxnew16": "TIE",
+      "classify_extra": {
+        "has_explicit_verdict": true,
+        "parsed_token": "TIE",
+        "is_empty": false,
+        "compare_would_return": "TIE"
+      }
+    },
+    {
+      "pairing": "gold_distractor",
+      "problem_id": "299",
+      "variant_A": "clean_correct",
+      "variant_B": "gold_distractor_wrong_final",
+      "raw_maxnew4": "TIE",
+      "classify_maxnew4": {
+        "has_explicit_verdict": true,
+        "parsed_token": "TIE",
+        "is_empty": false,
+        "compare_would_return": "TIE"
+      },
+      "raw_maxnew16": "TIE",
+      "classify_extra": {
+        "has_explicit_verdict": true,
+        "parsed_token": "TIE",
+        "is_empty": false,
+        "compare_would_return": "TIE"
+      }
+    }
+  ]
+}

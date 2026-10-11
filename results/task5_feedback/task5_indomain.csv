@@ -1,0 +1,4 @@
+policy,n,exact_acc,format_compliance,mean_response_tokens,std_response_tokens,win_rate_vs_sft,win,tie,loss,verifier_judge_agreement,verifier_strict_n,exact_acc_diag20,exact_acc_other280,n_seen,n_unseen,exact_acc_seen59,exact_acc_unseen241,format_seen59,format_unseen241,len_seen59,len_unseen241,win_rate_seen59,win_rate_unseen241
+sft,300,0.29,0.36,275.59,87.04976680037689,,,,,,,,,,,,,,,,,,
+rlvr,300,0.29333333333333333,0.36666666666666664,275.1333333333333,87.60206745404027,0.5,3,294,3,0.0,9,,,,,,,,,,,,
+rlaif,300,0.2733333333333333,0.35,273.75333333333333,85.20711524801722,0.49666666666666665,0,298,2,0.0,7,,,,,,,,,,,,

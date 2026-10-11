@@ -1,0 +1,4 @@
+policy,n,exact_acc,exact_acc_drop_vs_gsm_full,exact_acc_drop_vs_gsm_unseen,mean_response_tokens,std_response_tokens,win_rate_vs_sft
+sft,100,0.47,-0.18,,163.94,72.38975341856056,
+rlvr,100,0.44,-0.14666666666666667,,162.84,70.08077054370906,0.5
+rlaif,100,0.44,-0.16666666666666669,,163.16,70.26360651147932,0.495

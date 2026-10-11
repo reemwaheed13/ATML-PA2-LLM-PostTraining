@@ -1,0 +1,7 @@
+dataset,policy,n,cap_without_eos,truncated
+gsm,sft,300,6,6
+gsm,rlvr,300,7,7
+gsm,rlaif,300,5,5
+transfer,sft,100,0,0
+transfer,rlvr,100,0,0
+transfer,rlaif,100,0,0
