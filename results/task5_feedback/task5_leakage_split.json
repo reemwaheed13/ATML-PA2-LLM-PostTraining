@@ -5,7 +5,9 @@
     "seen_fmt": 0.423728813559322,
     "unseen_n": 241,
     "unseen_acc": 0.2821576763485477,
-    "unseen_fmt": 0.34439834024896265
+    "unseen_fmt": 0.34439834024896265,
+    "compliant_n": 108,
+    "acc_given_compliant": 0.806
   },
   "rlvr": {
     "seen_n": 59,
@@ -13,7 +15,9 @@
     "seen_fmt": 0.4067796610169492,
     "unseen_n": 241,
     "unseen_acc": 0.29045643153526973,
-    "unseen_fmt": 0.35684647302904565
+    "unseen_fmt": 0.35684647302904565,
+    "compliant_n": 110,
+    "acc_given_compliant": 0.8
   },
   "rlaif": {
     "seen_n": 59,
@@ -21,6 +25,8 @@
     "seen_fmt": 0.423728813559322,
     "unseen_n": 241,
     "unseen_acc": 0.26556016597510373,
-    "unseen_fmt": 0.33195020746887965
+    "unseen_fmt": 0.33195020746887965,
+    "compliant_n": 105,
+    "acc_given_compliant": 0.781
   }
 }
