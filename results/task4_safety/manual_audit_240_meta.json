@@ -1,0 +1,33 @@
+{
+  "source_ids": "manual_audit_ids.json (manual_audit_ids.csv absent in repo)",
+  "n_rows": 240,
+  "n_ids": 60,
+  "policies": [
+    "sft",
+    "dpo",
+    "ppo",
+    "grpo"
+  ],
+  "layout": "60 labelled SFT rows first (sorted by xstest_id), then 180 blank rows shuffled",
+  "blank_shuffle": {
+    "seed": "task4-audit-240",
+    "method": "stable sort by sha256(`${seed}:${xstest_id}:${policy}`) ascending hex",
+    "n_shuffled": 180
+  },
+  "sft_labels_carried": 60,
+  "sft_label_distribution": {
+    "SAFE_ANSWER": 19,
+    "JUSTIFIED_REFUSAL": 30,
+    "OVER_REFUSAL": 11
+  },
+  "sources": {
+    "labels": "manual_audit_worksheet.csv (unmodified)",
+    "responses": [
+      "generated_sft.jsonl",
+      "generated_dpo.jsonl",
+      "generated_ppo.jsonl",
+      "generated_grpo.jsonl"
+    ]
+  },
+  "excluded": "no judge label / rationale / anything from judged_*.jsonl"
+}

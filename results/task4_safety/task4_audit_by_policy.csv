@@ -1,0 +1,5 @@
+policy,n,agree_5way_raw,agree_5way_derived,agree_binary
+sft,60,0.7333,0.9167,0.9167
+dpo,60,0.7167,0.8833,0.9
+ppo,60,0.7167,0.8833,0.9
+grpo,60,0.7,0.8667,0.8833

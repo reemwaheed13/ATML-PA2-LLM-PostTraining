@@ -173,6 +173,57 @@ def main():
     else:
         print("\n[warn] no manual_audit_worksheet.csv — audit blocks skipped")
 
+    # ---------- 5b. extended audit over 240 rows (60 ids x 4 policies) ----------
+    # Uses the re-audited 240 worksheet for DPO/PPO/GRPO; SFT labels are taken from
+    # the FROZEN manual_audit_worksheet.csv so accidental SFT edits in the re-audit
+    # (ids 313/320/443) are ignored. Writes *_240 outputs only; the n=60 artifacts
+    # above and the frozen manual_audit_agreement.json are left untouched. The merge
+    # key is (xstest_id, policy) -- composite, so validate="one_to_one" holds at 240.
+    re_path = resdir / "manual_audit_worksheet_240_reaudited.csv"
+    if re_path.exists() and wpath.exists():
+        frozen = pd.read_csv(wpath)[["xstest_id", "manual_label"]].copy()
+        frozen["policy"] = "sft"
+        reaudit = pd.read_csv(re_path)[["xstest_id", "policy", "manual_label"]]
+        man = pd.concat([frozen, reaudit[reaudit.policy != "sft"]], ignore_index=True)
+        man["manual_label"] = man.manual_label.astype(str).str.strip().str.upper()
+        man = man[man.manual_label != ""]  # score only labelled rows
+
+        m = man.merge(
+            allp[["xstest_id", "policy", "benchmark_class", "type", "label",
+                  "derived_label", "truncated", "response_tokens"]],
+            on=["xstest_id", "policy"], how="inner", validate="one_to_one")
+        if len(m) != len(man):
+            raise ValueError(f"audit_240 merge lost rows ({len(man)} labelled, {len(m)} merged)")
+        m["agree_5way"] = m.manual_label == m.label
+        m["agree_derived"] = m.manual_label == m.derived_label
+        m["agree_binary"] = m.manual_label.isin(REFUSAL) == m.label.isin(REFUSAL)
+        m.to_csv(resdir / "task4_audit_joined_240.csv", index=False)
+
+        pd.crosstab(m.manual_label, m.label).to_csv(resdir / "manual_audit_confusion_240.csv")
+
+        def _agr(d):
+            return {"n": int(len(d)),
+                    "agreement_5way_raw": round(float(d.agree_5way.mean()), 4),
+                    "agreement_5way_derived": round(float(d.agree_derived.mean()), 4),
+                    "agreement_binary": round(float(d.agree_binary.mean()), 4)}
+
+        by_policy = pd.DataFrame([{"policy": p, **_agr(m[m.policy == p])} for p in POLICIES])
+        by_policy.to_csv(resdir / "task4_audit_by_policy.csv", index=False)
+        by_trunc = pd.DataFrame([{"truncated": k, **_agr(m[m.truncated == k])}
+                                 for k in (False, True)])
+        by_trunc.to_csv(resdir / "task4_audit_by_truncation_240.csv", index=False)
+
+        summary["audit_240"] = {
+            **_agr(m),
+            "sft_source": "frozen manual_audit_worksheet.csv (313/320/443 reverted)",
+            "by_policy": by_policy.to_dict("records"),
+            "by_truncation": by_trunc.to_dict("records"),
+        }
+        print("\n== audit (240 = 60 ids x 4 policies) ==")
+        print(json.dumps(summary["audit_240"], indent=2))
+    else:
+        print("\n[info] no re-audited 240 worksheet — extended audit skipped")
+
     # ---------- 6. figures ----------
     # (a) paired calibration rates, derived
     fig, ax = plt.subplots(figsize=(8, 4.2))
