@@ -11,15 +11,6 @@ def beta_run_name(beta: float) -> str:
 
 
 def run_beta_forks(config_path: str, resume: bool = False):
-    """Train the three matched beta forks from the same fresh init and seed, each on
-    the first `short_ablation_examples` CLEAN examples (drawn after the filter). Every
-    other setting is identical across forks, so beta is the only variable.
-
-    Equivalent to running task1_dpo.train once per beta with --beta/--max-examples;
-    kept as one command for convenience. For crash-safety across a dying Colab
-    session, prefer the explicit per-fork commands (see README) so each is resumable
-    on its own.
-    """
     cfg = load_yaml(config_path)
     n = int(cfg["short_ablation_examples"])
     summaries = {}

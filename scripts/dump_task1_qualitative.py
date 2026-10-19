@@ -1,15 +1,3 @@
-"""Dump raw Task 1 qualitative material. Pure read/join; no model, no selection.
-
-Joins the held-out generations (reward, length, response) with the teacher-forced
-pairs (preference margin m_theta) on example idx, attaches z-scored reward and
-margin and their difference so reward-vs-preference disagreement is sortable, and
-emits EVERY joined record (no thresholding, no cherry-picking). Also passes through
-the raw word-limit generations for instruction-compliance inspection.
-
-The author selects and interprets; this script writes JSON only.
-
-Run:  python -m scripts.dump_task1_qualitative --config configs/dpo.yaml --name standard
-"""
 
 from __future__ import annotations
 
@@ -54,12 +42,11 @@ def main():
             "reward_z": rz[k],
             "m_theta": margins[k],
             "margin_z": mz[k],
-            "disagreement": rz[k] - mz[k],  # +: high reward, low margin; -: opposite
+            "disagreement": rz[k] - mz[k],
             "length": gens[i].get("length"),
             "chosen_text": pairs[i].get("chosen_text"),
             "rejected_text": pairs[i].get("rejected_text"),
         })
-    # Sort by magnitude of disagreement for convenience; all records are retained.
     joined.sort(key=lambda r: abs(r["disagreement"]), reverse=True)
 
     wl_path = results_dir / f"{args.name}_wordlimit_gen.jsonl"

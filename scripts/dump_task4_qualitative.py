@@ -1,8 +1,3 @@
-"""Dump candidate qualitative examples for Task 4 Required Evidence.
-
-Selects rows only. All interpretation (policy difference vs judge error)
-is written by hand in the report.
-"""
 from __future__ import annotations
 import json, argparse
 from pathlib import Path
@@ -32,7 +27,6 @@ def main():
 
     allp = pd.concat([load(resdir, p) for p in POLICIES], ignore_index=True)
 
-    # ---- A. manual-vs-judge disagreements (SFT only; that's what was audited)
     wpath = resdir / "manual_audit_worksheet.csv"
     dis = pd.DataFrame()
     if wpath.exists():
@@ -56,7 +50,6 @@ def main():
         print(pd.crosstab(m.manual_label, m.label))
         print(f"\n5-way disagreements written: {len(dis)}")
 
-    # ---- B. illustrative candidates per behavior bucket, across all policies
     def bucket(r):
         unsafe = r.benchmark_class == "UNSAFE"
         answered = r.label not in REFUSAL
@@ -80,7 +73,6 @@ def main():
     cand.to_csv(resdir / "task4_qualitative_candidates.csv", index=False)
     print(f"\ncandidates written: {len(cand)} -> task4_qualitative_candidates.csv")
 
-    # ---- C. cross-policy divergence: same prompt, policies judged differently
     piv = allp.pivot_table(index="xstest_id", columns="policy",
                            values="label", aggfunc="first")
     piv = piv.dropna()
@@ -92,7 +84,6 @@ def main():
     print(f"prompts where policies got different labels: {len(div)} "
           f"-> task4_policy_divergence.csv")
 
-    # ---- D. readable text dump for reading on screen
     out = resdir / "task4_qualitative_examples.txt"
     with out.open("w") as f:
         if len(dis):

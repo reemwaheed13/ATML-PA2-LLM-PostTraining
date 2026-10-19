@@ -1,11 +1,3 @@
-"""Task 4 Required-Evidence tables and figures.
-
-Reads the generation + judge outputs and emits every quantity the manual's
-Required Evidence list asks for, plus the derived four-way calibration table
-made necessary by the judge's inability to condition on prompt class.
-
-All numbers are computed here; interpretation is written by hand in the report.
-"""
 from __future__ import annotations
 import json, argparse
 from pathlib import Path
@@ -48,7 +40,6 @@ def main():
     summary: dict = {"n_prompts": int(len(allp) / len(POLICIES)),
                      "policies": list(POLICIES)}
 
-    # ---------- 1. judge-reported rates, conditioned on prompt class ----------
     rows = []
     for pol in POLICIES:
         d = allp[allp.policy == pol]
@@ -82,17 +73,12 @@ def main():
     print("\n== judge-reported rates (note the sums) ==")
     print(rates.to_string(index=False))
 
-    # ---------- 2. raw label distribution by prompt class ----------
     xt = (allp.groupby(["policy", "benchmark_class", "label"])
               .size().rename("n").reset_index())
     xt.to_csv(resdir / "task4_label_distribution.csv", index=False)
     summary["labels_never_emitted"] = sorted(set(LABELS) - set(allp.label.unique()))
     print("\nlabels never emitted by the judge:", summary["labels_never_emitted"])
 
-    # ---------- 3. DERIVED four-way table ----------
-    # The released judge classifies answer-vs-refusal without conditioning on
-    # prompt class. benchmark_class is ground truth from the fixed XSTest CSV,
-    # so the four-way behavior label is recovered by crossing the two.
     allp["judge_refuses"] = allp.label.isin(REFUSAL)
     def derive(r):
         if r.label == "AMBIGUOUS":
@@ -120,14 +106,12 @@ def main():
     print("\n== DERIVED four-way rates (benchmark_class x judge answer/refusal) ==")
     print(derived.to_string(index=False))
 
-    # ---------- 4. category-level distribution (derived labels) ----------
     cat = (allp.groupby(["policy", "type", "derived_label"])
                .size().rename("n").reset_index())
     cat_wide = cat.pivot_table(index=["policy", "type"], columns="derived_label",
                                values="n", fill_value=0).reset_index()
     cat_wide.to_csv(resdir / "task4_category_derived.csv", index=False)
 
-    # ---------- 5. audit agreement, incl. truncation split ----------
     wpath = resdir / "manual_audit_worksheet.csv"
     if wpath.exists():
         w = pd.read_csv(wpath)
@@ -173,12 +157,6 @@ def main():
     else:
         print("\n[warn] no manual_audit_worksheet.csv — audit blocks skipped")
 
-    # ---------- 5b. extended audit over 240 rows (60 ids x 4 policies) ----------
-    # Uses the re-audited 240 worksheet for DPO/PPO/GRPO; SFT labels are taken from
-    # the FROZEN manual_audit_worksheet.csv so accidental SFT edits in the re-audit
-    # (ids 313/320/443) are ignored. Writes *_240 outputs only; the n=60 artifacts
-    # above and the frozen manual_audit_agreement.json are left untouched. The merge
-    # key is (xstest_id, policy) -- composite, so validate="one_to_one" holds at 240.
     re_path = resdir / "manual_audit_worksheet_240_reaudited.csv"
     if re_path.exists() and wpath.exists():
         frozen = pd.read_csv(wpath)[["xstest_id", "manual_label"]].copy()
@@ -186,7 +164,7 @@ def main():
         reaudit = pd.read_csv(re_path)[["xstest_id", "policy", "manual_label"]]
         man = pd.concat([frozen, reaudit[reaudit.policy != "sft"]], ignore_index=True)
         man["manual_label"] = man.manual_label.astype(str).str.strip().str.upper()
-        man = man[man.manual_label != ""]  # score only labelled rows
+        man = man[man.manual_label != ""]
 
         m = man.merge(
             allp[["xstest_id", "policy", "benchmark_class", "type", "label",
@@ -224,8 +202,6 @@ def main():
     else:
         print("\n[info] no re-audited 240 worksheet — extended audit skipped")
 
-    # ---------- 6. figures ----------
-    # (a) paired calibration rates, derived
     fig, ax = plt.subplots(figsize=(8, 4.2))
     x = range(len(POLICIES)); w_ = 0.2
     for i, (col, lab) in enumerate([
@@ -240,7 +216,6 @@ def main():
     ax.legend(fontsize=7, ncol=2); fig.tight_layout()
     fig.savefig(figdir / "task4_calibration.png", dpi=160); plt.close(fig)
 
-    # (b) over-refusal by category, SAFE prompts only
     safe_all = allp[allp.benchmark_class == "SAFE"]
     piv = (safe_all.assign(ovr=safe_all.derived_label == "OVER_REFUSAL")
                    .pivot_table(index="type", columns="policy", values="ovr"))
@@ -251,7 +226,6 @@ def main():
     ax.legend(fontsize=7); fig.tight_layout()
     fig.savefig(figdir / "task4_over_refusal_by_category.png", dpi=160); plt.close(fig)
 
-    # (c) response length distribution + cap
     fig, ax = plt.subplots(figsize=(7, 4))
     for pol in POLICIES:
         ax.hist(allp[allp.policy == pol].response_tokens, bins=40,

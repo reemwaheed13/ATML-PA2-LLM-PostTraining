@@ -1,19 +1,3 @@
-"""Aggregate Task 2 (PPO) results into report-ready tables (and, by default, figures).
-Pure read; no model, no new experiments.
-
-Reads the per-run JSONs/JSONLs written by continue_train.py, evaluate.py, and
-analyze_clipping.py and emits to results/task2_ppo/:
-  task2_standard_summary.csv   one-row standard-continuation summary (Table 1)
-  task2_continuation.csv       standard 20-update per-update trajectory
-  task2_clip_table.csv         cached clip/affected fractions + eps-fork held-out (Table 2)
-  task2_kl_table.csv           kl-fork held-out metrics (Table 3)
-  task2_summary.json           everything, combined
-Unless --tables-only is passed, it then calls scripts.plot_task2 to (re)generate the
-report figures from the same files.
-
-Run:  python -m scripts.aggregate_task2 --config configs/ppo.yaml
-      python -m scripts.aggregate_task2 --config configs/ppo.yaml --tables-only
-"""
 
 from __future__ import annotations
 
@@ -26,26 +10,21 @@ from common.data import load_yaml, read_jsonl, repo_path
 from common.logging_utils import load_json, save_json
 from task2_ppo.continue_train import KL_CONVENTION, fork_name
 
-# Stability statistic (defined once): std of the per-update policy loss over a run.
 STABILITY = "policy_loss_std_over_updates"
 
 CONT_COLS = ["update", "reward_mean", "terminal_reward_mean", "kl_sampled", "response_length_mean",
              "policy_loss", "value_loss", "entropy", "clip_fraction",
              "policy_grad_norm", "value_grad_norm", "any_step_skipped"]
 
-# Table 1: one-row standard-continuation summary.
 STD_SUMMARY_COLS = ["updates", "wall_seconds", "peak_vram_gb",
                     "reward_first", "reward_last", "kl_first", "kl_last",
                     "entropy_first", "entropy_last", "length_first", "length_last",
                     "mean_clip_fraction", "n_updates_step_skipped"]
 
-# Table 2: fixed column order (clipping study). cached_affected_note is appended so the
-# absence of the Required-Evidence affected-token fraction is always visible, never silent.
 CLIP_COLS = ["eps", "cached_clip_frac", "cached_affected_frac", "clipped_surrogate",
              "heldout_reward_mean", "heldout_kl_sampled", "heldout_length_mean",
              "heldout_length_std", STABILITY, "cached_affected_note"]
 
-# Table 3: kl study, with the shared-fork flag.
 KL_COLS = ["eps", "kl_beta", "fork", "shared_with_clip_study", STABILITY,
            "heldout_reward_mean", "heldout_kl_sampled", "heldout_entropy_mean",
            "heldout_length_mean", "heldout_length_std"]
@@ -60,9 +39,6 @@ def _write_csv(path, header, rows):
 
 
 def per_update(train_path):
-    """Collapse the per-(update,epoch) train log to one row per update: rollout metrics
-    are constant within an update (take first); optimization metrics are averaged over the
-    ppo epochs; a skipped step anywhere in the update sets any_step_skipped."""
     rows = read_jsonl(train_path)
     by_update = {}
     for r in rows:
@@ -106,7 +82,6 @@ def _eval_metrics(results_dir, name):
 
 
 def standard_summary_row(results_dir, name, summary):
-    """Table 1: one row from the per-update trajectory + the run summary."""
     train_path = results_dir / f"{name}_train.jsonl"
     if not train_path.exists():
         return None
@@ -142,7 +117,6 @@ def clip_table(results_dir, cfg):
         surrogate = ce.get("clipped_surrogate_mean")
         note = ""
         if affected is None:
-            # Required Evidence absent -> explicit NA + a note naming why (never dropped silently).
             affected = "NA"
             surrogate = "NA" if surrogate is None else surrogate
             note = (f"affected-token fraction (Required Evidence) absent: "
@@ -170,7 +144,6 @@ def kl_table(results_dir, cfg):
     for kl in [float(b) for b in cfg["kl_values"]]:
         name = fork_name(eps, kl)
         row = {"eps": eps, "kl_beta": kl, "fork": name,
-               # The (eps=0.20, beta=0.10) fork is the one trained by the clipping study.
                "shared_with_clip_study": bool(abs(kl - kl_std) < 1e-9),
                STABILITY: _stability(results_dir / f"{name}_train.jsonl")}
         ev = _eval_metrics(results_dir, name)
@@ -217,7 +190,6 @@ def main():
           f"task2_kl_table.csv, task2_summary.json to {results_dir}")
 
     if not args.tables_only:
-        # Lazy import so --tables-only never pulls in matplotlib.
         from scripts.plot_task2 import make_diagnostics, make_reward_vs_kl, make_trajectory
         make_trajectory(results_dir, args.name)
         make_diagnostics(results_dir, args.name)

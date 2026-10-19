@@ -7,9 +7,6 @@ from task2_ppo.continue_train import fork_name, run_fork
 
 
 def run_kl_forks(config_path: str, resume: bool = False, force: bool = False):
-    """Matched short continuations from the identical midpoint: fixed clip_epsilon, sweep
-    kl_beta. The (eps=0.20, kl=0.10) fork is shared with the clipping study and runs once
-    (run_fork skips if its summary already exists)."""
     cfg = load_yaml(config_path)
     eps = float(cfg["clip_epsilon"])
     summaries = {}

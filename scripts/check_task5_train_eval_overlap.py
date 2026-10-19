@@ -1,15 +1,3 @@
-"""Does the RLVR/RLAIF training prompt set overlap the Task 5 eval problems?
-
-The manual says RLVR and RLAIF were "prepared on the same fixed GSM8K prompt indices." If those
-indices intersect gsm8k_eval, in-domain accuracy is partly TRAIN accuracy and the GSM8K-vs-SVAMP
-gap means something different. Pure read; no model.
-
-Compares source_index sets of the RL training pool against gsm8k_eval (and the 20 controlled
-diagnostics), and scans the supplied adapter dirs for any recorded prompt-index metadata. Writes
-results/task5_feedback/train_eval_overlap.json.
-
-Run:  python -m scripts.check_task5_train_eval_overlap --config configs/feedback.yaml
-"""
 
 from __future__ import annotations
 
@@ -34,8 +22,6 @@ def _source_indexes(path):
 
 
 def _scan_adapter_metadata(cfg):
-    """Best-effort: look in the frozen RLVR/RLAIF adapter dirs for any JSON carrying a prompt-index
-    list (field name containing 'index' / 'prompt_id' with a list value)."""
     found = {}
     for name in ("rlvr_policy", "rlaif_policy"):
         d = repo_path(cfg["paths"][name])
@@ -78,14 +64,12 @@ def main():
         result["train_eval_overlap"] = {
             "n_train": len(train_idx), "n_eval": len(eval_idx), "n_overlap": len(inter),
             "overlap_fraction_of_eval": (len(inter) / len(eval_idx)) if eval_idx else None,
-            # FULL id list (consumed by evaluate_math for the seen/unseen split -- not just a preview).
             "overlap_ids_all": sorted(inter),
             "examples": sorted(map(str, inter))[:20],
             "verdict": ("LEAKAGE: in-domain accuracy is partly train accuracy" if inter
                         else "clean: training prompts disjoint from gsm8k_eval"),
         }
     if train_idx is not None and diag_ids is not None:
-        # diagnostic problem_id values are gsm source_indexes; cross-type compare on str.
         inter_d = {str(x) for x in train_idx} & {str(x) for x in diag_ids}
         result["train_diagnostic_overlap"] = {"n_overlap": len(inter_d), "examples": sorted(inter_d)[:20]}
 

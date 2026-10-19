@@ -23,10 +23,6 @@ from task1_dpo.train import make_collate
 
 
 def stratified_preference(policy, tokenizer, rows, cfg):
-    """Per-stratum held-out preference accuracy on the length-stratified eval set.
-
-    Uses the reference-corrected margin m_theta = (pc-rc) - (pr-rr); accuracy is the
-    fraction with m_theta > 0. Split by the real length_stratum field."""
     collate = make_collate(tokenizer, int(cfg["max_sequence_length"]))
     device = next(policy.parameters()).device
     eval_bs = int(cfg.get("eval_batch_size", cfg["batch_size"]))
@@ -48,8 +44,6 @@ def stratified_preference(policy, tokenizer, rows, cfg):
         for j, row in enumerate(chunk):
             recs.append({
                 "idx": start + j,
-                # Stable data index so standard/balanced pairs join on identity, not
-                # row position, and qualitative picks trace back to the source row.
                 "source_index": row.get("source_index", start + j),
                 "stratum": str(row[skey]) if skey else None,
                 "m_theta": float(m[j]),
@@ -58,8 +52,6 @@ def stratified_preference(policy, tokenizer, rows, cfg):
     by = {}
     for r in recs:
         by.setdefault(r["stratum"], []).append(r["m_theta"])
-    # Accuracy is strictly m_theta > 0: exact-zero margins are failures, not dropped.
-    # n_zero_margin surfaces any tie per stratum (and overall) instead of hiding it.
     per_stratum = {
         s: {
             "n": len(v),
@@ -79,7 +71,6 @@ def stratified_preference(policy, tokenizer, rows, cfg):
 
 
 def word_limit_eval(policy, tokenizer, cfg):
-    """Generated length + explicit word-limit compliance on the tracked word-limit prompts."""
     rows = read_jsonl(cfg["paths"]["word_limit_prompts"])
     gen_block = cfg.get("generation", {})
     max_new = int(cfg["max_generation_tokens"])
@@ -124,7 +115,6 @@ def run_analysis(config_path, adapter, name):
     policy = load_policy(cfg, adapter_path=adapter, trainable=False)
     results_dir = repo_path(cfg["results_dir"])
 
-    # Same filter as training/eval, recorded, so stratified numbers are comparable.
     rows, _ = load_filtered_rows(
         cfg["paths"]["dpo_length_eval"], tokenizer, int(cfg["max_sequence_length"]),
         results_dir=cfg["results_dir"], run_name=name,

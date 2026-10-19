@@ -6,10 +6,6 @@ _FINAL_RE = re.compile(r"####\s*([-+]?\d[\d,]*(?:\.\d+)?)")
 
 
 def extract_designated_final(text: str):
-    """Extract the final answer only from the designated `#### <number>` field.
-
-    The last designated final is used. Numbers that appear only in intermediate reasoning are ignored.
-    """
     matches = _FINAL_RE.findall(str(text))
     if not matches:
         return None

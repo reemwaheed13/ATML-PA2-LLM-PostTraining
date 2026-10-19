@@ -1,15 +1,3 @@
-"""The single data-loading entry point every DPO script calls.
-
-read -> deterministic prompt-length filter (BEFORE shuffling) -> optionally record
-the filter report (counts, fractions, per-stratum breakdown, and the exact
-retained/dropped example indices the handout requires) to
-`<results_dir>/<run_name>_filter.json`.
-
-Putting the filter here guarantees it is identical across the standard run, all
-three beta forks, the length-balanced run, and both eval sets: every caller passes
-the one config value `max_sequence_length`, and the filter is on prompt length only
-so it can never un-balance a length-stratified dataset.
-"""
 
 from __future__ import annotations
 

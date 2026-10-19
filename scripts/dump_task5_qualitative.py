@@ -1,20 +1,3 @@
-"""Dump candidate qualitative examples for the Task 5 report. Pure read; no model.
-
-Selection criteria live HERE, in code -- nothing is hand-picked. All interpretation (is this a
-judge error or a real quality difference?) is written by hand in the report.
-
-Two CSVs to results/task5_feedback/:
-  task5_qual_vj_disagreements.csv  real in-domain generations where the verifier and the AI judge
-                                   rank policy-vs-SFT differently (the verifier strictly separates
-                                   them but the judge prefers the other one, or ties). Criterion:
-                                   verifier_rank in {A,B} and judge_pref != verifier_rank.
-  task5_qual_diagnostic.csv        diagnostic examples spanning the perturbation categories. Per
-                                   pairing, criterion (stated per row in selection_reason): prefer a
-                                   judge WRONG-preference (pref==B, the most report-worthy failure),
-                                   else a position-bias flip, else the lowest problem_id.
-
-Run:  python -m scripts.dump_task5_qualitative --config configs/feedback.yaml
-"""
 
 from __future__ import annotations
 
@@ -30,7 +13,6 @@ def _df(path):
 
 
 def vj_disagreements(outdir):
-    """In-domain verifier-judge ranking disagreements, joined to the real generations."""
     frames = []
     for policy in ("rlvr", "rlaif"):
         pw_path = outdir / f"pairwise_gsm_{policy}.jsonl"
@@ -40,8 +22,6 @@ def vj_disagreements(outdir):
         pw = _df(pw_path)
         pol = _df(gen_p)[["id", "question", "gold_final", "response"]].rename(columns={"response": "response_policy"})
         sft = _df(gen_s)[["id", "response"]].rename(columns={"response": "response_sft"})
-        # Normalize id dtype before merging: gsm generations on disk carry integer ids (803) while the
-        # pairwise log writes string ids; a raw merge would silently match nothing. Compare as strings.
         for d in (pw, pol, sft):
             d["id"] = d["id"].astype(str)
         m = pw.merge(pol, on="id", how="left", validate="one_to_one")
@@ -68,11 +48,11 @@ def diagnostic_examples(outdir, diag_path, per_pairing):
     diag = read_jsonl(diag_path)
     by_key = {(str(r["problem_id"]), r["variant_type"]): r for r in diag}
 
-    def rank(row):  # lower sorts first -> most report-worthy failure first
+    def rank(row):
         if row.pref == "B":
-            return (0, int(row.problem_id))          # judge wrong-preference
+            return (0, int(row.problem_id))
         if bool(row.get("position_flip", False)):
-            return (1, int(row.problem_id))          # position-bias flip
+            return (1, int(row.problem_id))
         return (2, int(row.problem_id))
 
     def reason(row):

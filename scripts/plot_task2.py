@@ -1,15 +1,3 @@
-"""Task 2 (PPO) report figures. Pure read; no model, no new experiments.
-
-Three figures to report/figures/ (300 dpi, axis labels with units, legend, no title
--- the report caption carries the title):
-  task2_standard_trajectory.png   2x2: reward, KL, entropy, clip fraction vs update
-  task2_standard_diagnostics.png  2x2: policy loss, value loss, grad norm, length vs update
-  task2_reward_vs_kl.png          held-out reward vs KL; 3 eps + 3 beta forks, by marker
-
-The first two read <name>_train.jsonl; the third reads the fork <name>_eval.json files.
-
-Run:  python -m scripts.plot_task2 --config configs/ppo.yaml --name standard
-"""
 
 from __future__ import annotations
 
@@ -46,7 +34,7 @@ def _trajectory_rows(results_dir, name):
 def _mark_skips(ax, skipped):
     for s in skipped:
         ax.axvline(s, color="red", linestyle=":", linewidth=0.8, alpha=0.6,
-                   label="_skip")  # underscore -> kept out of the legend
+                   label="_skip")
 
 
 def make_trajectory(results_dir, name):

@@ -34,7 +34,6 @@ Preference:"""
 
 
 class PairwiseAIJudge:
-    """Fixed course judge with deterministic A/B orientation balancing and persistent caching."""
 
     def __init__(self, cfg: dict, cache_path: str | Path):
         self.cfg = cfg

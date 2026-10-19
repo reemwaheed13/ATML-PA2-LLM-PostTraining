@@ -92,9 +92,6 @@ def load_policy(cfg: dict, adapter_path: str | None = None, trainable: bool = Fa
                 model.gradient_checkpointing_enable()
         if hasattr(model, "enable_input_require_grads"):
             model.enable_input_require_grads()
-        # PEFT keeps the LoRA adapter fp32 here (measured: all trainable params fp32). Guard
-        # it: a future load that silently produces an fp16 trainable param must fail now, not
-        # at the first GradScaler.unscale_. No cast -- the policy is expected to be fp32 already.
         _assert_trainable_fp32(model, "policy")
     else:
         model.eval()
@@ -143,8 +140,6 @@ def load_reward_model(cfg: dict):
     if qcfg is None and torch.cuda.is_available():
         model = model.cuda()
 
-    # The RM repository tokenizer was incompatible with the pinned Transformers build during
-    # instructor preparation. Use the canonical base-policy tokenizer intentionally.
     tok = load_tokenizer(cfg.get("reward_tokenizer", cfg["base_model"]), padding_side="left")
     model.config.pad_token_id = tok.pad_token_id
     model.eval()
@@ -154,10 +149,6 @@ def load_reward_model(cfg: dict):
 
 
 def _cast_trainable_to_fp32(model) -> int:
-    """Cast every trainable parameter that is not fp32 to fp32, in place. Frozen params
-    (e.g. the fp16 base) are untouched. Returns the number of tensors cast. GradScaler
-    unscales gradients in place before the optimizer step and refuses fp16 gradients, so
-    all trainable params must be fp32 master weights."""
     n = 0
     for p in model.parameters():
         if p.requires_grad and p.dtype != torch.float32:
@@ -167,8 +158,6 @@ def _cast_trainable_to_fp32(model) -> int:
 
 
 def _assert_trainable_fp32(model, label: str) -> None:
-    """Fail loudly at load time if any trainable parameter is non-fp32, instead of deep in
-    the first GradScaler.unscale_ call."""
     bad = [(name, str(p.dtype)) for name, p in model.named_parameters()
            if p.requires_grad and p.dtype != torch.float32]
     if bad:
@@ -191,9 +180,6 @@ def load_value_model(cfg: dict, checkpoint: str, train_mode: str = "lora_head"):
     model.config.use_cache = False
 
     if train_mode == "lora_head":
-        # The released critic is a full merged checkpoint. Wrapping it with a fresh,
-        # zero-initialized LoRA adapter preserves the exact starting value function while
-        # giving the continuation run critic capacity comparable to instructor preparation.
         model = get_peft_model(model, make_value_lora_config(cfg))
     elif train_mode == "head_only":
         for name, p in model.named_parameters():
@@ -213,17 +199,12 @@ def load_value_model(cfg: dict, checkpoint: str, train_mode: str = "lora_head"):
     if torch.cuda.is_available():
         model = model.cuda()
     model.train()
-    # The value head is trained via PEFT modules_to_save, i.e. a COPY of the fp16 base
-    # score head, so it arrives fp16 while the LoRA adapters are fp32. Cast all trainable
-    # params to fp32 (general, not hardcoded to 'score') so GradScaler can unscale them;
-    # the frozen fp16 base is left alone. Measured: see README section 7.
     _cast_trainable_to_fp32(model)
     _assert_trainable_fp32(model, "value_model")
     return model
 
 
 def value_parameter_groups(model, lora_lr: float, head_lr: float):
-    """Return optimizer groups for a PEFT critic without implementing the PPO loop."""
     lora_params, head_params, other = [], [], []
     for name, p in model.named_parameters():
         if not p.requires_grad:

@@ -1,12 +1,3 @@
-"""Task 5 three-way synthesis: SFT vs RLVR (verifier) vs RLAIF (judge).
-
-Pure read; no model. Combines the in-domain (task5_gsm.json), OOD (task5_transfer.json),
-and controlled-diagnostic (task5_sensitivity.json) results plus the raw pairwise logs into one
-feedback-source comparison. The binary verifier reward and the [0,1] pairwise win rate are kept
-in SEPARATE sections on SEPARATE scales -- never one aggregate.
-
-Run:  python -m task5_feedback.compare_feedback --config configs/feedback.yaml
-"""
 
 from __future__ import annotations
 
@@ -16,8 +7,6 @@ from common.data import load_yaml, read_jsonl, repo_path
 from common.logging_utils import load_json, save_json
 
 POLICIES = ("sft", "rlvr", "rlaif")
-# The two diagnostic pairings where the verifier TIES (both variants parse to the same correct
-# final answer) -> the region where ONLY the judge can discriminate. This is RQ1.
 VERIFIER_TIE_PAIRINGS = ("S_reason", "filler_control")
 
 
@@ -29,9 +18,6 @@ def _require(path):
 
 
 def strict_subset_breakdown(pairwise_path):
-    """From a raw pairwise_{dataset}_{policy}.jsonl, break the verifier-STRICT subset (reward differs
-    between policy and SFT) into judge-agree / judge-disagree-decisive / judge-tie. Reporting the tie
-    count separately makes the lenient agreement (ties excluded) recomputable from the strict one."""
     rows = read_jsonl(pairwise_path)
     strict = [r for r in rows if r["verifier_rank"] in ("A", "B")]
     agree = sum(1 for r in strict if r["judge_pref"] == r["verifier_rank"])
@@ -41,8 +27,8 @@ def strict_subset_breakdown(pairwise_path):
     return {
         "verifier_strict_n": n,
         "agree": agree, "disagree_decisive": disagree_decisive, "judge_tie": judge_tie,
-        "agreement_tie_is_disagree": (agree / n) if n else None,   # headline (judge TIE = disagree)
-        "agreement_ties_excluded": (agree / (n - judge_tie)) if (n - judge_tie) else None,  # lenient
+        "agreement_tie_is_disagree": (agree / n) if n else None,
+        "agreement_ties_excluded": (agree / (n - judge_tie)) if (n - judge_tie) else None,
     }
 
 
@@ -64,7 +50,6 @@ def main():
         "scales": {"verifier": "binary exact reward {0,1}", "judge": "pairwise win rate [0,1]"},
     }
 
-    # ---- In-domain, per policy. Verifier side (exact acc) and judge side (win rate) kept apart. ----
     indomain = {}
     for p in POLICIES:
         m = gsm["policies"][p]
@@ -72,11 +57,10 @@ def main():
         ds = m.get("diagnostic_split", {})
         tos = m.get("train_overlap_split", {})
         entry = {
-            "verifier": {  # binary scale
+            "verifier": {
                 "exact_acc": m["exact_acc"],
                 "exact_acc_diag20": ds.get("diag20", {}).get("exact_acc"),
                 "exact_acc_other280": ds.get("other280", {}).get("exact_acc"),
-                # leakage split: train-seen vs unseen-241 (the leakage-free in-domain baseline)
                 "exact_acc_seen59": tos.get("seen", {}).get("exact_acc"),
                 "exact_acc_unseen241": tos.get("unseen", {}).get("exact_acc"),
                 "n_seen": tos.get("n_seen"), "n_unseen": tos.get("n_unseen"),
@@ -85,22 +69,20 @@ def main():
             "mean_response_tokens": m["mean_response_tokens"],
             "std_response_tokens": m.get("std_response_tokens"),
         }
-        if tos:  # per-subset win rate ([0,1]) kept on the judge scale, separate from verifier acc above
+        if tos:
             entry["judge_seen_unseen"] = {
                 "win_rate_seen59": tos.get("seen", {}).get("win_rate_vs_sft"),
                 "win_rate_unseen241": tos.get("unseen", {}).get("win_rate_vs_sft"),
             }
-        if pw:  # rlvr / rlaif have a pairwise-vs-SFT block
-            entry["judge"] = {  # [0,1] scale
+        if pw:
+            entry["judge"] = {
                 "win_rate_vs_sft": pw["win_rate_vs_sft"],
                 "win": pw["win"], "tie": pw["tie"], "loss": pw["loss"],
             }
-            # Verifier-judge agreement recomputed from raw so the tie breakdown is explicit.
             entry["verifier_judge_agreement"] = strict_subset_breakdown(outdir / f"pairwise_gsm_{p}.jsonl")
         indomain[p] = entry
     comparison["in_domain"] = indomain
 
-    # ---- RQ1: the verifier-tie region, where only the judge discriminates (diagnostic). ----
     comparison["verifier_tie_region"] = {
         "description": "diagnostic pairings where the verifier ties (both parse to the same correct "
                        "final); the judge's better/tie/wrong here is resolution the binary verifier "
@@ -111,12 +93,10 @@ def main():
         "S_reason_judge": diag["judge"]["S_reason"],
     }
 
-    # ---- OOD drop (if transfer scored). ----
     if transfer:
         comparison["out_of_domain"] = {
             p: {
                 "exact_acc": transfer["policies"][p]["exact_acc"],
-                # drop against the full-300 baseline AND the leakage-free unseen-241 baseline
                 "exact_acc_drop_vs_gsm_full": transfer["policies"][p].get("exact_acc_drop_vs_gsm_full"),
                 "exact_acc_drop_vs_gsm_unseen": transfer["policies"][p].get("exact_acc_drop_vs_gsm_unseen"),
                 "mean_response_tokens": transfer["policies"][p]["mean_response_tokens"],
@@ -127,7 +107,6 @@ def main():
     else:
         comparison["out_of_domain"] = {"note": "run evaluate_math --dataset transfer --phase all first"}
 
-    # ---- Feedback-source discussion: coverage / noise / exploitability / inference cost. ----
     j = diag["judge"]
     comparison["feedback_source"] = {
         "verifier_RLVR": {

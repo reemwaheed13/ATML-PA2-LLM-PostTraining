@@ -39,12 +39,6 @@ def _chunks(seq, n):
 
 
 def _teacher_forced_pass(policy, tokenizer, rows, cfg, beta, pairs_path):
-    """Pass A: held-out DPO loss + preference accuracy on the dataset's chosen/rejected.
-
-    preference margin m_theta = (pc-rc) - (pr-rr), the reference-corrected margin
-    from the handout (NOT common.metrics.preference_accuracy, which omits the
-    reference and would be off-spec).
-    """
     collate = make_collate(tokenizer, int(cfg["max_sequence_length"]))
     device = next(policy.parameters()).device
     eval_bs = int(cfg.get("eval_batch_size", cfg["batch_size"]))
@@ -87,19 +81,11 @@ def _teacher_forced_pass(policy, tokenizer, rows, cfg, beta, pairs_path):
         "held_out_dpo_loss": float(loss),
         "preference_accuracy": float((m_all > 0).float().mean()),
         "mean_preference_margin": float(m_all.mean()),
-        # Accuracy is strictly m_theta > 0, so exact-zero margins are counted as
-        # failures (not dropped). Surface the count so a silent tie is visible.
         "n_zero_margin": int((m_all == 0).sum()),
     }, pair_records
 
 
 def _generation_pass(policy, tokenizer, rm_model, rm_tok, rows, cfg, gen_path, resume):
-    """Pass B: one seeded sample per prompt -> reward, length, sampled KL.
-
-    Each record stores reward/length/eos/truncation plus the per-prompt KL
-    numerator (sum of policy-ref over valid tokens) and token count, so the
-    aggregate KL = sum(kl_sum)/sum(n_tokens) is resume-correct from the file.
-    """
     device = next(policy.parameters()).device
     gen_block = cfg.get("generation", {})
     temperature = float(gen_block.get("temperature", 0.7))
@@ -135,7 +121,7 @@ def _generation_pass(policy, tokenizer, rm_model, rm_tok, rows, cfg, gen_path, r
             with reference_mode(policy):
                 r_tok = token_logprobs(policy, gen["sequences"], gen["attention_mask"], gen["prompt_width"], gen["response_ids"], cfg)[0]
         mask = gen["response_mask"]
-        per_prompt_kl = ((p_tok - r_tok) * mask).sum(-1)      # sum over tokens, per prompt
+        per_prompt_kl = ((p_tok - r_tok) * mask).sum(-1)
         per_prompt_tok = mask.sum(-1)
 
         for k, i in enumerate(sub_idxs):
@@ -189,8 +175,6 @@ def run_evaluation(config_path, adapter, name="standard", beta=None, max_example
     beta = float(cfg["beta"] if beta is None else beta)
 
     tokenizer = load_tokenizer(cfg["base_model"])
-    # Same prompt-length filter as training, recorded to <name>_filter.json, so the
-    # held-out numbers are comparable across conditions. Subset after filtering.
     rows, _ = load_filtered_rows(
         cfg["paths"]["dpo_standard_eval"], tokenizer, int(cfg["max_sequence_length"]),
         results_dir=cfg["results_dir"], run_name=name,
@@ -226,10 +210,6 @@ def run_evaluation(config_path, adapter, name="standard", beta=None, max_example
             "samples_per_prompt": 1,
         },
         "precision": "base_fp16+lora_fp32_peft_native+autocast_fp16+gradscaler",
-        # Fixed KL averaging convention, recorded so all Task 1 conditions visibly
-        # match rather than matching by assumption. kl_sampled = sum over prompts of
-        # sum_t(logp_policy - logp_ref) on response tokens, divided by total response
-        # tokens -> a single per-token mean KL (token-level, not sequence-level).
         "kl_convention": "sampled_per_token_mean(sum_tokens/sum_response_tokens)",
         "wall_seconds": wall_seconds,
         "sec_per_generation": (wall_seconds / gen_metrics["num_generations"]) if gen_metrics["num_generations"] else None,

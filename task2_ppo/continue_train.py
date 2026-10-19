@@ -24,17 +24,11 @@ from common.models import (
 from common.precision import autocast_context, make_grad_scaler, token_logprobs
 from task2_ppo.ppo import compute_gae, ppo_policy_loss, shaped_rewards, value_mse_loss
 
-# Same KL averaging convention string Task 1 records (task1_dpo/evaluate.py:233), kept
-# identical so Task 1/2/3 KL numbers are comparable. sampled_kl == masked_mean, i.e.
-# sum_t(logp_policy - logp_ref) over response tokens / total response tokens.
 KL_CONVENTION = "sampled_per_token_mean(sum_tokens/sum_response_tokens)"
 PRECISION = "base_fp16+lora_fp32_peft_native+autocast_fp16+gradscaler"
 
 
 def _report_trainable_dtypes(model, label):
-    """Summary of trainable-parameter dtypes (counts + dtype histogram) at load time -- a
-    cheap one-line sanity check, not the 200-line per-tensor dump. The hard guard is the
-    fp32 assertion inside common.models load_policy/load_value_model."""
     from collections import Counter
 
     counts = Counter()
@@ -67,8 +61,6 @@ def prepare_ppo_continuation(config_path: str):
     reward_model, reward_tokenizer = load_reward_model(cfg)
     prompts = read_jsonl(cfg["paths"]["rl_prompt_train"])
 
-    # One-line trainable-dtype summary for both models. The hard guard is the fp32 assertion
-    # inside common.models (load_policy / load_value_model); this just surfaces the counts.
     _report_trainable_dtypes(policy, "policy")
     _report_trainable_dtypes(value_model, "value_model")
 
@@ -98,11 +90,6 @@ def prepare_ppo_continuation(config_path: str):
     }
 
 
-# ---------------------------------------------------------------------------
-# Atomic checkpoint (two models + two optimizers + scaler + RNG + progress).
-# Same crash-safe pattern as task1_dpo/train.py:_save_train_state, extended to the
-# PPO policy+critic pair so a dying Colab session resumes exactly.
-# ---------------------------------------------------------------------------
 def _save_state(path: Path, policy, value_model, policy_opt, value_opt, scaler, update):
     state = {
         "policy_trainable": {n: p.detach().cpu() for n, p in policy.named_parameters() if p.requires_grad},
@@ -142,19 +129,6 @@ def _load_state(path: Path, policy, value_model, policy_opt, value_opt, scaler, 
 
 
 def _response_values(value_model, sequences, attention_mask, prompt_width, resp_len, cfg):
-    """Per-response-step critic values V_t, aligned to the policy log-probs / rewards.
-
-    token_values returns a value for EVERY position: [B, P+G] (common/models.py:216-231).
-    The hidden state at absolute index j is the representation after consuming tokens
-    0..j, i.e. the state from which token j+1 is produced. Response token t (t=0..G-1)
-    sits at absolute position P+t, so the state it is emitted FROM lives at index P+t-1.
-    Sweeping t gives the slice [P-1 : P-1+G]. Prompts are LEFT-padded
-    (common/models.py:30,34 -> load_tokenizer default padding_side="left"), so index
-    P-1 is the last REAL prompt token for every example and this constant offset is
-    correct regardless of prompt length. Off-by-one in either direction would feed GAE
-    the value of the wrong state (the critic would baseline an action with a state that
-    has already seen it, or lag one token), biasing advantages and the value target.
-    """
     with autocast_context(cfg):
         vals_full = token_values(value_model, sequences, attention_mask)
     return vals_full[:, prompt_width - 1 : prompt_width - 1 + resp_len]
@@ -216,12 +190,10 @@ def run_ppo(
     state_path = out / "train_state.pt"
 
     if not resume and log_path.exists():
-        log_path.unlink()  # fresh start: never mix stale rows with a rerun
+        log_path.unlink()
 
     scaler = make_grad_scaler(cfg)
 
-    # Deterministic prompt schedule: consume rl_prompt_train in fixed order, cycling if
-    # fewer prompts than updates. Recorded in meta so the exact prompt IDs are preserved.
     def prompt_index(update, j):
         return (update * prompts_per_update + j) % len(prompt_rows)
 
@@ -252,7 +224,7 @@ def run_ppo(
         "value_coef": value_coef,
         "missing_eos_penalty": missing_eos_penalty,
         "max_grad_norm": max_grad_norm,
-        "normalize_advantages": False,  # 1 response/update: zero-meaning a single trajectory kills the reward level
+        "normalize_advantages": False,
         "policy_learning_rate": float(cfg["policy_learning_rate"]),
         "value_lora_learning_rate": float(cfg["value_lora_learning_rate"]),
         "value_head_learning_rate": float(cfg["value_head_learning_rate"]),
@@ -278,7 +250,6 @@ def run_ppo(
         prompts = [prompt_messages(r) for r in rows]
         src_ids = [r.get("source_index", prompt_index(update, j)) for j, r in enumerate(rows)]
 
-        # --- Rollout (on-policy, no grad) --------------------------------------
         gen = batch_generate(
             policy, tokenizer, prompts, max_prompt_length, max_response_length,
             temperature=temperature, top_p=top_p, do_sample=do_sample,
@@ -291,11 +262,6 @@ def run_ppo(
         resp_len = response_ids.shape[1]
         responses = gen["responses"]
 
-        # Fixed rollout quantities (old/ref log-probs, rollout values) are computed in
-        # eval mode so LoRA dropout is OFF: old_logp is the deterministic behavior log-prob
-        # (generation itself ran in eval), not a dropout-perturbed one. The update epochs
-        # below switch back to train(). This keeps the epoch-0 ratio ~1 up to the dropout
-        # applied only inside the training-mode new_logp forward.
         policy.eval()
         value_model.eval()
         with torch.no_grad():
@@ -304,8 +270,6 @@ def run_ppo(
                 ref_logp = token_logprobs(policy, sequences, attn, P, response_ids, cfg)[0].detach()
             rm_scores = score_reward_pairs(reward_model, reward_tok, prompts, responses, reward_max_length).to(device)
 
-        # Terminal learned reward, with the missing-EOS penalty (configs/ppo.yaml:22)
-        # applied when a response was truncated without terminating.
         terminal = rm_scores.clone()
         for b in range(len(responses)):
             if not gen["terminated_with_eos"][b]:
@@ -317,15 +281,12 @@ def run_ppo(
             advantages, returns = compute_gae(rewards, rollout_values, mask, gamma, lam)
             advantages = advantages.detach()
             returns = returns.detach()
-            # No advantage normalization (single trajectory). See meta.normalize_advantages.
 
         reward_mean = float(rm_scores.mean())
         terminal_mean = float(terminal.mean())
         kl_value = float(sampled_kl(old_logp, ref_logp, mask))
         length_mean = mean_response_length(mask)
 
-        # --- PPO update epochs (one forward per opt step; each logged value is the
-        # full-batch masked_mean, so there is no partial-window averaging issue). ---
         for epoch in range(ppo_epochs):
             policy.train()
             value_model.train()
@@ -340,9 +301,6 @@ def run_ppo(
             value_opt.zero_grad(set_to_none=True)
             scaler.scale(loss).backward()
 
-            # Single scaler, two optimizers (policy and critic share NO parameters:
-            # 1.5B causal-LM policy vs 0.5B seq-cls critic, common/models.py:63-69,152-159).
-            # Summed loss -> one backward -> unscale/clip/step each optimizer -> one update.
             scaler.unscale_(policy_opt)
             scaler.unscale_(value_opt)
             policy_gn = torch.nn.utils.clip_grad_norm_(trainable_parameters(policy), max_grad_norm)
@@ -350,7 +308,7 @@ def run_ppo(
             policy_skip = not bool(torch.isfinite(policy_gn))
             value_skip = not bool(torch.isfinite(value_gn))
 
-            scaler.step(policy_opt)  # GradScaler no-ops the step whose grads held inf/nan
+            scaler.step(policy_opt)
             scaler.step(value_opt)
             scaler.update()
 
@@ -381,11 +339,10 @@ def run_ppo(
                 "wall_s": timer(),
             }
             if policy_skip or value_skip:
-                rec["event"] = "nonfinite_grad"  # step(s) discarded by GradScaler; weights unchanged
+                rec["event"] = "nonfinite_grad"
             append_jsonl(log_path, rec)
             opt_iter += 1
 
-        # Periodic + final checkpoint.
         if (update + 1) % max(1, n_updates // 4) == 0 or update + 1 == n_updates:
             _save_state(state_path, policy, value_model, policy_opt, value_opt, scaler, update + 1)
             policy.save_pretrained(str(out))
@@ -413,8 +370,6 @@ def fork_name(eps: float, kl: float) -> str:
 
 
 def run_fork(config_path: str, eps: float, kl: float, resume: bool = False, force: bool = False):
-    """Short continuation fork from the identical midpoint. Skips if already trained so
-    the shared (eps=0.20, kl=0.10) fork runs exactly once across the clip and KL studies."""
     cfg = load_yaml(config_path)
     name = fork_name(eps, kl)
     summary_path = repo_path(cfg["results_dir"]) / f"{name}_summary.json"

@@ -1,17 +1,3 @@
-"""Read-only diagnostic for DPO dataset lengths.
-
-Reports, per dataset: how many examples have an over-length PROMPT (>= max_length
-tokens -- the condition that raises in common/data.py), prompt-length distribution,
-over-counts at larger candidate caps, and a per-stratum breakdown. For the TRAIN
-sets it additionally reports how many responses get RIGHT-TRUNCATED at caps 768 vs
-1152 (prompt kept intact, response clipped to the remaining budget).
-
-Uses the same stratum/length helpers as the real filter (common.data), so the
-numbers here match what the filter will do.
-
-Run:  python -m scripts.count_overlength --config configs/dpo.yaml
-Writes: results/task1_dpo/overlength_report.json
-"""
 
 from __future__ import annotations
 
@@ -36,9 +22,6 @@ RESPONSE_TRUNC_CAPS = [768, 1152]
 
 
 def response_truncation(tokenizer, rows, caps):
-    """At each cap, among examples whose prompt fits (prompt < cap), how many have a
-    right-truncated chosen / rejected / either response. Mirrors encode_prompt_response:
-    content budget = max(0, (cap - prompt_len) - 1), reserving one slot for EOS."""
     triples = []
     for row in rows:
         pn = prompt_token_length(tokenizer, row)
@@ -51,7 +34,7 @@ def response_truncation(tokenizer, rows, caps):
         considered = c_tr = r_tr = either = 0
         for pn, cl, rl in triples:
             if pn >= cap:
-                continue  # prompt-dropped example, not a response-truncation case
+                continue
             considered += 1
             budget = max(0, (cap - pn) - 1)
             ct, rt = cl > budget, rl > budget
@@ -83,7 +66,6 @@ def analyze(name, path, tokenizer, max_length, with_response):
         "first_row_keys": sorted(rows[0].keys()),
     }
 
-    # Per-stratum ONLY when the dataset has a real stratum field; never derived.
     skey = detect_stratum_key(rows)
     rec["stratum_key"] = skey
     if skey:
@@ -109,7 +91,6 @@ def main():
     tokenizer = load_tokenizer(cfg["base_model"])
 
     specs = [
-        # name, path, with_response
         ("dpo_standard_train", cfg["paths"]["dpo_standard_train"], True),
         ("dpo_standard_eval", cfg["paths"]["dpo_standard_eval"], False),
         ("dpo_length_balanced_train", cfg["paths"]["dpo_length_train"], True),

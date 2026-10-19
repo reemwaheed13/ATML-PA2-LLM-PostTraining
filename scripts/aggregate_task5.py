@@ -1,27 +1,3 @@
-"""Aggregate ALL Task 5 Required Evidence into one JSON + per-table CSVs + figures. Pure read.
-
-Reads from results/task5_feedback/:
-  task5_gsm.json / task5_transfer.json   (evaluate_math: in-domain / OOD)
-  task5_sensitivity.json                 (score_perturbations: controlled diagnostic)
-  diagnostic_judge_meta.json             (judge inference cost)
-  gen_{gsm,transfer}_{policy}.jsonl      (cap-without-EOS counts)
-
-Emits to results/task5_feedback/:
-  task5_indomain.csv   per policy: exact acc, win-rate vs SFT (+win/tie/loss), format compliance,
-                       mean & sd response length, verifier-judge agreement, diag20/other280 split
-  task5_diagnostic.csv per pairing x mechanism: better/tie/wrong (verifier binary vs judge [0,1]
-                       kept on separate rows, never averaged), plus S_reason / S_outcome
-  task5_ood.csv        per policy: exact acc, win-rate, length, drop vs in-domain
-  task5_caps.csv       per policy per eval set: cap-without-EOS (truncated) + truncated_no_final
-  task5_aggregate.json everything, with a checklist_coverage block
-And figures to report/figures/ (300 dpi, no title): task5_indomain.png, task5_diagnostic.png,
-  task5_sensitivity.png, task5_transfer.png.
-
-CONSTRAINT: the binary verifier reward and the [0,1] pairwise win rate are never put on one axis
-or in one aggregate -- separate CSV rows and separate figure panels throughout.
-
-Run:  python -m scripts.aggregate_task5 --config configs/feedback.yaml [--tables-only]
-"""
 
 from __future__ import annotations
 
@@ -33,7 +9,7 @@ from common.logging_utils import load_json, save_json
 
 POLICIES = ("sft", "rlvr", "rlaif")
 PAIRINGS = ("S_reason", "S_outcome", "filler_control", "gold_distractor")
-PAIRING_B = {  # perturbed variant B for each pairing (A is clean_correct throughout)
+PAIRING_B = {
     "S_reason": "corrupt_reasoning_correct_final",
     "S_outcome": "good_reasoning_wrong_final",
     "filler_control": "persuasive_filler_correct",
@@ -56,7 +32,6 @@ def _load(outdir, name):
     return load_json(p) if p.exists() else None
 
 
-# --------------------------------------------------------------------------- tables
 
 def indomain_rows(gsm):
     rows = []
@@ -76,7 +51,6 @@ def indomain_rows(gsm):
             "verifier_strict_n": pw.get("verifier_strict_n", ""),
             "exact_acc_diag20": ds.get("diag20", {}).get("exact_acc", ""),
             "exact_acc_other280": ds.get("other280", {}).get("exact_acc", ""),
-            # train-seen vs unseen (leakage split): acc + win-rate per subset
             "n_seen": tos.get("n_seen", ""), "n_unseen": tos.get("n_unseen", ""),
             "exact_acc_seen59": tos.get("seen", {}).get("exact_acc", ""),
             "exact_acc_unseen241": tos.get("unseen", {}).get("exact_acc", ""),
@@ -91,7 +65,6 @@ def indomain_rows(gsm):
 
 
 def diagnostic_rows(diag):
-    """One row per (pairing, mechanism). Verifier (binary) and judge ([0,1]) on separate rows."""
     rows = []
     for mech in ("verifier", "judge"):
         block = diag[mech]
@@ -107,7 +80,6 @@ def diagnostic_rows(diag):
                      "better": block["S_reason"], "tie": "", "wrong": "", "n": ""})
         rows.append({"mechanism": mech, "pairing": "S_outcome_summary", "variant_A": "", "variant_B": "",
                      "better": block["S_outcome"], "tie": "", "wrong": "", "n": ""})
-    # clean_correct is the reference variant A in every pairing -> no self-comparison row; note it.
     rows.append({"mechanism": "both", "pairing": "clean_correct_control",
                  "variant_A": "clean_correct", "variant_B": "(reference)",
                  "better": "", "tie": "", "wrong": "", "n": ""})
@@ -146,7 +118,6 @@ def cap_rows(outdir, datasets):
     return rows
 
 
-# --------------------------------------------------------------------------- figures
 
 def _figdir():
     d = repo_path("report/figures")
@@ -160,7 +131,6 @@ def make_figures(gsm, diag, transfer):
     import matplotlib.pyplot as plt
     import numpy as np
 
-    # In-domain: exact acc (binary) and win-rate-vs-SFT ([0,1]) on SEPARATE panels/axes.
     fig, (ax_a, ax_w) = plt.subplots(1, 2, figsize=(11, 4.5))
     ax_a.bar(POLICIES, [gsm["policies"][p]["exact_acc"] for p in POLICIES], color="tab:blue")
     ax_a.set_ylabel("exact final-answer accuracy (verifier, binary)")
@@ -173,7 +143,6 @@ def make_figures(gsm, diag, transfer):
     fig.tight_layout(); fig.savefig(_figdir() / "task5_indomain.png", dpi=DPI); plt.close(fig)
     print("wrote task5_indomain.png")
 
-    # Diagnostic: stacked better/tie/wrong per pairing, verifier and judge on SEPARATE panels.
     fig, axes = plt.subplots(1, 2, figsize=(12, 4.5), sharey=True)
     for ax, mech in zip(axes, ("verifier", "judge")):
         b = [diag[mech]["pairings"][k]["better"] for k in PAIRINGS]
@@ -190,7 +159,6 @@ def make_figures(gsm, diag, transfer):
     fig.tight_layout(); fig.savefig(_figdir() / "task5_diagnostic.png", dpi=DPI); plt.close(fig)
     print("wrote task5_diagnostic.png")
 
-    # Sensitivity summary: S_reason / S_outcome, verifier vs judge (grouped).
     fig, ax = plt.subplots(figsize=(6.5, 4.5))
     x = np.arange(2)
     ax.bar(x - 0.2, [diag["verifier"]["S_reason"], diag["verifier"]["S_outcome"]], width=0.4,
@@ -203,7 +171,6 @@ def make_figures(gsm, diag, transfer):
     fig.tight_layout(); fig.savefig(_figdir() / "task5_sensitivity.png", dpi=DPI); plt.close(fig)
     print("wrote task5_sensitivity.png")
 
-    # Transfer: in-domain vs OOD exact accuracy per policy (binary), with the drop visible.
     if transfer:
         fig, ax = plt.subplots(figsize=(7, 4.5))
         x = np.arange(len(POLICIES))

@@ -6,17 +6,6 @@ from common.metrics import masked_mean, sampled_kl, sample_entropy
 
 
 def group_relative_advantages(rewards: torch.Tensor, group_ids: torch.Tensor, eps: float = 1e-6):
-    """Return one scalar advantage per sampled completion.
-
-    `group_ids[i]` identifies which prompt produced reward `rewards[i]`.
-    Validate this implementation against the group-relative definition in the assignment manual.
-    """
-    # Group-relative: standardize WITHIN each prompt's group of completions, using
-    # group_ids. (The released code normalized globally and ignored group_ids -- the planted
-    # defect, fixed here and checked by scripts/verify_grpo_groups.py.) Denominator is the
-    # manual's ADDITIVE form sigma_r + eps (population std + eps), matching A_k = (r_k - mu_r)/
-    # (sigma_r + eps) exactly, rather than clamp_min(sigma, eps); for a degenerate group the
-    # numerator is 0 so the advantage is 0 regardless.
     group_ids = torch.as_tensor(group_ids, device=rewards.device)
     advantages = torch.zeros_like(rewards)
     for g in torch.unique(group_ids):
@@ -39,11 +28,6 @@ def grpo_policy_loss(
     loss_type="grpo",
     max_completion_length: int | None = None,
 ):
-    """PPO-style clipped GRPO loss for already-sampled completions.
-
-    `token_mask` may be all-zero for a completion that was deliberately masked because it hit the
-    maximum generation length.
-    """
     ratio = torch.exp(new_logp - old_logp)
     adv = seq_adv[:, None]
     s1 = ratio * adv
@@ -58,7 +42,6 @@ def grpo_policy_loss(
     elif loss_type == "dr_grpo":
         if max_completion_length is None:
             raise ValueError("dr_grpo requires max_completion_length")
-        # Constant normalization rather than dividing by each response's realized length.
         per_sequence = token_sum / float(max_completion_length)
         policy_term = -per_sequence.mean()
     else:

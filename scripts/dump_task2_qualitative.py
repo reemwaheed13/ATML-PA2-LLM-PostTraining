@@ -1,15 +1,3 @@
-"""Dump raw Task 2 qualitative material. Pure read; no model, no selection.
-
-Reads the held-out generations (reward, length, response) for one policy, attaches
-z-scored reward and z-scored length and their difference so reward-vs-length
-disagreement is sortable, and emits EVERY record (no thresholding, no cherry-picking).
-Carries the source index so the author can trace each case back to the fixed prompt set.
-
-The author selects and interprets (reward and quality moving together vs disagreeing);
-this script writes JSON only.
-
-Run:  python -m scripts.dump_task2_qualitative --config configs/ppo.yaml --name standard
-"""
 
 from __future__ import annotations
 
@@ -55,12 +43,11 @@ def main():
             "reward_z": rz[k],
             "length": lengths[k],
             "length_z": lz[k],
-            "disagreement": rz[k] - lz[k],  # +: high reward, short; -: low reward, long
+            "disagreement": rz[k] - lz[k],
             "entropy": r.get("entropy"),
             "truncated": r.get("truncated"),
             "terminated": r.get("terminated"),
         })
-    # Sort by magnitude of disagreement for convenience; all records are retained.
     joined.sort(key=lambda r: abs(r["disagreement"]), reverse=True)
 
     out = results_dir / f"{args.name}_qualitative.json"

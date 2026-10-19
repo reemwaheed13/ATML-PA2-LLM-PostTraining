@@ -1,19 +1,3 @@
-"""Empirically confirm the DPO objective behaviour at initialization.
-
-Run (in Colab, after `pip install -r requirements.txt`):
-
-    python -m scripts.verify_dpo_init                 # objective-only, instant
-    python -m scripts.verify_dpo_init --with-model    # also loads the policy
-
-At a freshly initialized LoRA adapter, lora_B == 0, so the adapter is a no-op
-and policy == reference. Therefore (policy_margin - ref_margin) == 0 exactly,
-and a CORRECT DPO loss must return log(2) = 0.6931472 for every beta.
-The current (defective) code uses (policy_margin + ref_margin) instead, which
-equals 2 * policy_margin != 0 and scales with beta, so it returns three
-different values, none equal to log(2).
-
-This script only REPORTS; it does not modify the objective.
-"""
 
 from __future__ import annotations
 
@@ -29,11 +13,8 @@ LOG2 = math.log(2.0)
 
 
 def check_objective_only():
-    """Feed equal policy/ref log-probs (the exact init condition) with nonzero margins."""
-    # Hand-picked so chosen != rejected => nonzero, non-uniform margins.
     policy_chosen = torch.tensor([-10.0, -8.0, -15.0])
     policy_rejected = torch.tensor([-12.0, -7.0, -14.0])
-    # policy == reference at init:
     ref_chosen = policy_chosen.clone()
     ref_rejected = policy_rejected.clone()
 
@@ -56,7 +37,6 @@ def check_with_model(config_path: str, max_length: int = 256):
 
     cfg = load_yaml(config_path)
     tok = load_tokenizer(cfg["base_model"])
-    # fresh_lora=True => brand-new adapter with lora_B == 0 => policy == reference.
     model = load_policy(cfg, trainable=True, fresh_lora=True)
     device = next(model.parameters()).device
 

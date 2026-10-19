@@ -1,4 +1,3 @@
-"""Download the fixed ATML PA2 course assets."""
 
 from pathlib import Path
 from huggingface_hub import snapshot_download

@@ -10,15 +10,6 @@ from common.logging_utils import append_jsonl, save_json, wall_timer
 from task5_feedback.rlvr import exact_reward, extract_designated_final
 from task5_feedback.rlaif import PairwiseAIJudge
 
-# ---------------------------------------------------------------------------
-# Task 5 Step 2 -- controlled reward diagnostic.
-#
-# Scope: the 100-response diagnostic set only (20 problems x 5 variants). We
-# score it with BOTH mechanisms and keep them on strictly separate scales:
-#   * verifier -> binary exact reward in {0, 1}
-#   * judge    -> pairwise preference, win space in [0, 1]
-# These are NEVER averaged into one number or plotted on one axis.
-# ---------------------------------------------------------------------------
 
 EXPECTED_VARIANTS = {
     "clean_correct",
@@ -28,8 +19,6 @@ EXPECTED_VARIANTS = {
     "gold_distractor_wrong_final",
 }
 
-# Verified cross-tab (variant -> constant expected exact reward). Used only by the
-# self-check oracle; the diagnostic file carries the authoritative per-row value.
 VARIANT_EXPECTED_REWARD = {
     "clean_correct": 1,
     "corrupt_reasoning_correct_final": 1,
@@ -38,9 +27,6 @@ VARIANT_EXPECTED_REWARD = {
     "gold_distractor_wrong_final": 0,
 }
 
-# Reference variant A is the same clean/correct response in every pairing, so
-# "better" always means "prefers the clean reference" and "wrong" always means
-# "prefers the perturbed variant B".
 REFERENCE = "clean_correct"
 PAIRINGS = {
     "S_reason": ("clean_correct", "corrupt_reasoning_correct_final"),
@@ -51,15 +37,6 @@ PAIRINGS = {
 
 
 def normalize_gold(value) -> str:
-    """Single, explicit cast + validation for the gold final answer.
-
-    `gold_final` is an int in the diagnostic set and a bare numeric str in
-    gsm8k_eval / transfer; we do NOT rely on numerically_equal to coerce. Cast
-    once, and REQUIRE the result to be numeric. A malformed gold -- e.g. a
-    '#### 42' designated-final string accidentally passed where a gold belongs --
-    must raise here, not flow into numerically_equal and silently score every
-    response 0 (a 0% that looks like a real result).
-    """
     gold = str(value).strip()
     try:
         float(gold)
@@ -71,9 +48,6 @@ def normalize_gold(value) -> str:
     return gold
 
 
-# ---------------------------------------------------------------------------
-# Step B -- load and group
-# ---------------------------------------------------------------------------
 
 def load_diagnostic_groups(path):
     rows = read_jsonl(path)
@@ -88,16 +62,13 @@ def load_diagnostic_groups(path):
 
 
 def load_and_guard(path):
-    """Return (rows, groups) after the structural guards from the prompt."""
     rows = read_jsonl(path)
-    # A stale DataFrame left in a notebook namespace iterates to column-name
-    # strings; guard the raw list explicitly before trusting any field.
     assert isinstance(rows, list), f"expected a list of rows, got {type(rows).__name__}"
     assert rows, "diagnostic set is empty"
     assert isinstance(rows[0], dict), f"expected dict rows, got {type(rows[0]).__name__}"
     assert len(rows) == 100, f"expected n=100 diagnostic rows, got {len(rows)}"
 
-    groups = load_diagnostic_groups(path)  # raises if any variant missing per problem
+    groups = load_diagnostic_groups(path)
     assert len(groups) == 20, f"expected 20 distinct problem_id, got {len(groups)}"
 
     variant_counts = Counter(r["variant_type"] for r in rows)
@@ -106,11 +77,6 @@ def load_and_guard(path):
     return rows, groups
 
 
-# ---------------------------------------------------------------------------
-# Step A -- verifier self-check (CPU). Supplied correctness oracle for the
-# verifier: 100/100 or the verifier is misconfigured and no judge call is worth
-# making.
-# ---------------------------------------------------------------------------
 
 def verifier_self_check(rows):
     ones = 0
@@ -128,27 +94,22 @@ def verifier_self_check(rows):
     assert ones == 60, f"expected 60 reward-1 rows, got {ones}"
     assert len(rows) - ones == 40, f"expected 40 reward-0 rows, got {len(rows) - ones}"
 
-    # Comma handling lives on the response side; gsm8k gold already has them stripped.
     assert extract_designated_final("#### 1,600") == "1600", "comma stripping regressed"
     print(f"[Step A] verifier self-check OK: {len(rows)}/{len(rows)} rows, "
           f"{ones} ones / {len(rows) - ones} zeros")
 
 
 def discriminating_self_test(path):
-    """Prove the self-check actually discriminates: corrupt one row's gold_final
-    and confirm the assertion fires naming the right problem_id. A passing run is
-    not evidence the check works -- this is."""
     rows, _ = load_and_guard(path)
-    verifier_self_check(rows)  # clean pass first
+    verifier_self_check(rows)
 
-    # Pick a reward-1 row and break its gold so exact_reward must disagree.
     victim = next(r for r in rows if int(r["expected_exact_reward"]) == 1)
     vid = victim["problem_id"]
     corrupted = []
     for r in rows:
         if r is victim:
             bad = dict(r)
-            bad["gold_final"] = str(int(normalize_gold(r["gold_final"])) + 7)  # guaranteed mismatch
+            bad["gold_final"] = str(int(normalize_gold(r["gold_final"])) + 7)
             corrupted.append(bad)
         else:
             corrupted.append(r)
@@ -166,8 +127,6 @@ def discriminating_self_test(path):
 
 
 def _gold_normalization_discriminating_test():
-    """A response-shaped gold ('#### 42') must RAISE in normalize_gold, not sail through and
-    silently score every response 0%. Prove the guard fires rather than trusting it exists."""
     try:
         normalize_gold("#### 42")
     except ValueError as exc:
@@ -179,10 +138,6 @@ def _gold_normalization_discriminating_test():
     )
 
 
-# ---------------------------------------------------------------------------
-# Rate helpers. prefs are 'A' (prefers clean reference), 'B' (prefers perturbed),
-# or 'TIE'. better/tie/wrong must sum to 1.0.
-# ---------------------------------------------------------------------------
 
 def rates_from_prefs(prefs):
     n = len(prefs)
@@ -196,9 +151,6 @@ def rates_from_prefs(prefs):
     return {"better": better, "tie": tie, "wrong": wrong, "n": n}
 
 
-# ---------------------------------------------------------------------------
-# Step C (verifier side) -- deterministic, derived from Step A per-row rewards.
-# ---------------------------------------------------------------------------
 
 def verifier_preference(resp_a, resp_b, gold):
     ra = exact_reward(resp_a, gold)
@@ -208,7 +160,7 @@ def verifier_preference(resp_a, resp_b, gold):
     elif rb > ra:
         pref = "B"
     else:
-        pref = "TIE"  # a verifier tie is an invariance, not an error
+        pref = "TIE"
     return pref, int(ra), int(rb)
 
 
@@ -220,7 +172,6 @@ def run_verifier_pairings(groups):
         for pid in sorted(groups, key=lambda x: int(x)):
             a, b = groups[pid][va], groups[pid][vb]
             gold = normalize_gold(a["gold_final"])
-            # A and B are variants of the same problem -> same gold.
             assert gold == normalize_gold(b["gold_final"]), f"gold mismatch within problem {pid}"
             pref, ra, rb = verifier_preference(a["response"], b["response"], gold)
             prefs.append(pref)
@@ -233,10 +184,6 @@ def run_verifier_pairings(groups):
         assert len(prefs) == 20, f"[verifier/{name}] expected 20 pairs, got {len(prefs)}"
         pairings[name] = rates_from_prefs(prefs)
 
-    # The verifier's behaviour is a deterministic consequence of the Step A
-    # per-row rewards; departing from this means the verifier is wrong, not
-    # interesting. (clean/corrupt share the correct final -> tie; outcome and
-    # distractor flip 1 vs 0 -> clean strictly better.)
     assert pairings["S_reason"]["tie"] == 1.0 and pairings["S_reason"]["better"] == 0.0, \
         f"verifier S_reason must be all-tie, got {pairings['S_reason']}"
     assert pairings["filler_control"]["tie"] == 1.0, \
@@ -255,43 +202,21 @@ def run_verifier_pairings(groups):
     return summary, per_pair_rows
 
 
-# ---------------------------------------------------------------------------
-# Step D (judge side) -- GPU. Position-bias-controlled via both argument orders.
-# ---------------------------------------------------------------------------
 
 REMAP = {"A": "B", "B": "A", "TIE": "TIE"}
 
 
 def _phys_swap(judge, problem, a, b):
-    """Physical orientation bit compare() will use for (problem, a, b). Reuses the
-    judge's OWN _key so this cannot drift from the swap at rlaif.py:80."""
     return int(judge._key(problem, a, b)[:8], 16) % 2 == 1
 
 
 def judge_semantic_preference(judge, problem, resp_a, resp_b):
-    """Preference in semantic terms (A = resp_a) with EXACT position-bias control.
-
-    compare() shows each pair in one physical orientation fixed by a hash swap
-    (rlaif.py:80-81), then un-swaps the verdict. The two argument orders
-    compare(a,b) and compare(b,a) hit OPPOSITE physical orientations iff their
-    swap bits are equal (s1 == s2) -- that, and only that, is the position-tested
-    case. When s1 != s2 both calls send a byte-identical prompt, so under greedy
-    decoding the second call is redundant: skip it, reuse the first verdict, and
-    carry no position information.
-
-    On tested pairs we count a preference only when both orders agree; an
-    opposite-decisive flip is a position-bias disagreement, a tie-vs-decisive
-    mismatch is a soft disagreement. Any mismatch collapses to TIE.
-
-    Returns (pref, r_ab, r_ba_semantic, info).
-    """
     tested = _phys_swap(judge, problem, resp_a, resp_b) == _phys_swap(judge, problem, resp_b, resp_a)
-    r_ab = judge.compare(problem, resp_a, resp_b)          # terms of (A=resp_a, B=resp_b)
+    r_ab = judge.compare(problem, resp_a, resp_b)
     if not tested:
-        # Second call would be a byte-identical prompt -> same semantic verdict.
         return r_ab, r_ab, r_ab, {"tested": False, "skipped": True,
                                   "position_flip": False, "soft": False}
-    r_ba = REMAP[judge.compare(problem, resp_b, resp_a)]   # remap (A=resp_b,..) back to resp_a terms
+    r_ba = REMAP[judge.compare(problem, resp_b, resp_a)]
     if r_ab == r_ba:
         return r_ab, r_ab, r_ba, {"tested": True, "skipped": False,
                                   "position_flip": False, "soft": False}
@@ -301,9 +226,6 @@ def judge_semantic_preference(judge, problem, resp_a, resp_b):
 
 
 def _done_pair_keys(path):
-    """pairing|problem_id already written. Crash-tolerant: a truncated final line
-    left by a disconnect is skipped and that pair is simply recomputed.
-    (Same pattern as task4_safety.generate._done_ids.)"""
     if not path.exists():
         return set()
     done = set()
@@ -352,14 +274,10 @@ def run_judge_pairings(cfg, groups, out_jsonl, cache_path, resume=True):
     print(f"[Step D] judge pairings done in {elapsed:.1f}s -> {out_jsonl} "
           f"(skipped {skipped} redundant second calls this run)")
 
-    # Reload the full log (resumed + new) and assert no pair was lost.
     records = read_jsonl(out_jsonl)
     expected = len(PAIRINGS) * len(groups)
     assert len(records) == expected, f"judge log has {len(records)} rows, expected {expected}"
 
-    # Inference-cost record (the feedback-source discussion needs a number). compare() model
-    # calls = 2 on a position-tested pair, 1 where the redundant second call was skipped; equals
-    # cold-cache model calls. elapsed is THIS pass only (resumed pairs excluded) -> ~0 if warm.
     calls_by_pairing = defaultdict(int)
     for r in records:
         calls_by_pairing[r["pairing"]] += 2 if r.get("position_tested") else 1
@@ -384,20 +302,12 @@ def aggregate_judge(records):
         for name in PAIRINGS
     }
 
-    # Step E -- break judge results down by the perturbed variant's style and
-    # reasoning_quality (independent axes from variant_type). Computed from the
-    # data, not hardcoded, so no field mapping is assumed.
     def breakdown(axis):
         buckets = defaultdict(list)
         for rec in records:
             buckets[rec.get(axis + "_B", "")].append(rec["pref"])
         return {k: rates_from_prefs(v) for k, v in sorted(buckets.items())}
 
-    # Position bias is only observable on pairs the two argument orders actually
-    # present in OPPOSITE physical orientations (position_tested). The rest send
-    # a byte-identical prompt, so they can never disagree -- including them would
-    # dilute the disagreement rate toward 0 by construction. Report over the
-    # tested subset only, and state tested_n.
     tested = [r for r in records if r.get("position_tested")]
     untested_n = len(records) - len(tested)
     position_flips = sum(1 for r in tested if r.get("position_flip"))
@@ -419,9 +329,9 @@ def aggregate_judge(records):
             "SFT-vs-RLVR and SFT-vs-RLAIF cannot collide."
         ),
         "position_tested_n": tested_n,
-        "position_untested_n": untested_n,  # == redundant second calls skipped
-        "position_disagreement_count": position_flips,   # over tested subset only
-        "soft_disagreement_count": soft,                 # over tested subset only
+        "position_untested_n": untested_n,
+        "position_disagreement_count": position_flips,
+        "soft_disagreement_count": soft,
         "position_disagreement_rate_tested": disagreement_rate_tested,
         "caveats": {
             "gold_distractor": (
@@ -438,9 +348,6 @@ def aggregate_judge(records):
     }
 
 
-# ---------------------------------------------------------------------------
-# Output
-# ---------------------------------------------------------------------------
 
 def write_pairs_csv(path, rows, fields):
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -494,7 +401,7 @@ def main():
 
     rows, groups = load_and_guard(diag_path)
     print("rows[0] keys:", sorted(rows[0].keys()))
-    verifier_self_check(rows)  # Step A -- abort before any judge call if this fails
+    verifier_self_check(rows)
 
     outdir = repo_path(cfg["results_dir"]) / "task5_feedback"
     outdir.mkdir(parents=True, exist_ok=True)
@@ -534,14 +441,10 @@ def main():
               f"position_tested_n={j['position_tested_n']} (untested/skipped={j['position_untested_n']})  "
               f"disagreement_rate_tested={j['position_disagreement_rate_tested']} "
               f"(flips={j['position_disagreement_count']} soft={j['soft_disagreement_count']})")
-        # gold_distractor is 2 lines vs clean's 5: a clean-preference here cannot be
-        # separated from a judge length bias with this set -- flag, don't over-read.
         gd = j["pairings"]["gold_distractor"]
         print(f"[judge] NOTE gold_distractor better={gd['better']} wrong={gd['wrong']} -- "
               "length confound (2 vs 5 lines); not read as distractor detection.")
 
-    # Verifier (binary) and judge (win-rate) rates are kept in separate sections
-    # on separate scales -- never aggregated into one number or one axis.
     save_json(outdir / "task5_sensitivity.json", result)
     print(f"[done] wrote {outdir / 'task5_sensitivity.json'}")
 

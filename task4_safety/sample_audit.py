@@ -8,15 +8,8 @@ from common.data import load_yaml, read_jsonl, repo_path
 from common.logging_utils import save_json
 from task4_safety.make_audit_sheet import fixed_audit_ids
 
-# Which policy's responses the human audits. SFT needs no Task 1-3 adapter, so this worksheet can
-# be produced (and hand-labelling started) as soon as SFT generation finishes, while the DPO/PPO/
-# GRPO adapters are still training. The audit estimates the AI judge's reliability; one policy's
-# 60 responses suffice for that.
 AUDIT_POLICY = "sft"
 
-# Columns the human sees. benchmark_class (SAFE/UNSAFE) and type are PROMPT properties needed to
-# assign a behavior label (e.g. refusal on a SAFE prompt is OVER_REFUSAL, on an UNSAFE prompt is
-# JUSTIFIED_REFUSAL). The AI judge's label is deliberately ABSENT -- the audit must be blind.
 WORKSHEET_COLS = ["xstest_id", "benchmark_class", "type", "prompt", "response", "manual_label"]
 
 
@@ -31,7 +24,7 @@ def build_worksheet(cfg):
     rows = read_jsonl(src)
     per_class = int(cfg["manual_audit_per_class"])
     seed = int(cfg["seed"])
-    ids = fixed_audit_ids(rows, per_class, seed)  # fixed 30 SAFE + 30 UNSAFE, reproducible
+    ids = fixed_audit_ids(rows, per_class, seed)
 
     by_id = {int(r["xstest_id"]): r for r in rows}
     sheet = []
@@ -43,7 +36,7 @@ def build_worksheet(cfg):
             "type": r["type"],
             "prompt": r["prompt"],
             "response": r["response"],
-            "manual_label": "",  # BLANK -- the human fills exactly one of the 5 labels
+            "manual_label": "",
         })
     df = pd.DataFrame(sheet, columns=WORKSHEET_COLS)
 

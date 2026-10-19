@@ -11,11 +11,6 @@ def dpo_loss(
     ref_rejected_logp: torch.Tensor,
     beta: float,
 ):
-    """Return scalar DPO loss plus lightweight diagnostics.
-
-    Validate this implementation against the equation in the assignment manual
-    before using it.
-    """
 
     policy_margin = (
         policy_chosen_logp

@@ -6,11 +6,6 @@ from common.metrics import masked_mean
 
 
 def compute_gae(rewards, values, mask, gamma=1.0, lam=0.95):
-    """Token-level GAE over response positions.
-
-    rewards, values, mask: [batch, response_steps]. Padding positions must have mask=0.
-    The final valid response position bootstraps with zero.
-    """
     batch, steps = rewards.shape
     advantages = torch.zeros_like(rewards)
     last_adv = torch.zeros(batch, device=rewards.device, dtype=rewards.dtype)
@@ -34,7 +29,6 @@ def compute_gae(rewards, values, mask, gamma=1.0, lam=0.95):
 
 
 def shaped_rewards(task_reward, policy_logp, ref_logp, response_mask, beta_kl):
-    """Sampled-action KL shaping plus terminal learned reward."""
     rewards = -float(beta_kl) * (policy_logp - ref_logp) * response_mask
     for b in range(rewards.shape[0]):
         valid = int(response_mask[b].sum().item())
@@ -44,10 +38,6 @@ def shaped_rewards(task_reward, policy_logp, ref_logp, response_mask, beta_kl):
 
 
 def ppo_policy_loss(new_logp, old_logp, advantage, mask, eps=0.2):
-    """Return PPO clipped policy loss and diagnostics.
-
-    Validate this starter implementation against the clipped surrogate in the assignment manual.
-    """
     ratio = torch.exp(new_logp - old_logp)
     surr1 = ratio * advantage
     surr2 = ratio.clamp(1.0 - eps, 1.0 + eps) * advantage

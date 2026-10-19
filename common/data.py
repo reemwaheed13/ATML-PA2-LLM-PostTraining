@@ -104,13 +104,6 @@ def encode_prompt_response(
     response: str,
     max_length: int,
 ):
-    """
-    Encode prompt + response for DPO.
-
-    The prompt is kept intact for both chosen and rejected responses.
-    If the combined sequence exceeds max_length, truncate the RESPONSE
-    from the right rather than removing prompt/question tokens.
-    """
 
     prompt_ids = tokenizer.apply_chat_template(
         messages,
@@ -118,7 +111,6 @@ def encode_prompt_response(
         add_generation_prompt=True,
     )
 
-    # A DPO example is meaningful only if we can condition on the prompt.
     if len(prompt_ids) >= max_length:
         raise ValueError(
             f"Prompt alone has {len(prompt_ids)} tokens, which does not fit "
@@ -133,11 +125,9 @@ def encode_prompt_response(
 
     response_budget = max_length - len(prompt_ids)
 
-    # Keep an EOS token when the tokenizer defines one.
     eos_id = tokenizer.eos_token_id
 
     if eos_id is not None:
-        # Reserve one token for EOS.
         content_budget = max(0, response_budget - 1)
         response_ids = response_ids[:content_budget] + [eos_id]
     else:
@@ -175,13 +165,6 @@ def prompt_token_length(tokenizer, row: dict) -> int:
 
 
 def filter_overlength_prompts(rows: list[dict], tokenizer, max_length: int):
-    """Deterministic, PROMPT-length-only filter applied at dataset load (before any
-    shuffle). Drops rows whose rendered prompt has >= max_length tokens -- the exact
-    condition that raises in encode_prompt_response (common/data.py). Never filters
-    on response length, so it cannot un-balance a length-stratified dataset. Order
-    is preserved. Returns (kept_rows, report) with retained/dropped indices; a
-    per-stratum breakdown is included ONLY when the dataset has a real stratum
-    field (length_stratum etc.) -- never derived/guessed."""
     skey = detect_stratum_key(rows)
     kept_rows, kept_idx, dropped_idx = [], [], []
     per_total, per_dropped = {}, {}

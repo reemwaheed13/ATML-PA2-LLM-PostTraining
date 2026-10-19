@@ -1,19 +1,3 @@
-"""Aggregate Task 3 (GRPO) results into report-ready tables (and, by default, figures).
-Pure read; no model, no new experiments.
-
-Reads the per-run JSONs/JSONLs written by continue_train.py, evaluate.py,
-analyze_group_size.py, and compare_normalization.py and emits to results/task3_grpo/:
-  task3_standard_summary.csv   one-row standard-continuation summary (Table 1)
-  task3_continuation.csv       standard 20-update per-update trajectory
-  task3_group_size.csv         equal-generation group-size study (Table 2; also by difficulty)
-  task3_group_size_by_difficulty.csv
-  task3_normalization.csv      canonical vs Dr. GRPO: held-out metrics + length-conditioned stat
-  task3_summary.json           everything, combined
-Unless --tables-only is passed, it then calls scripts.plot_task3 to (re)generate the figures.
-
-Run:  python -m scripts.aggregate_task3 --config configs/grpo.yaml
-      python -m scripts.aggregate_task3 --config configs/grpo.yaml --tables-only
-"""
 
 from __future__ import annotations
 
@@ -26,29 +10,23 @@ from common.data import load_yaml, read_jsonl, repo_path
 from common.logging_utils import load_json, save_json
 from task3_grpo.continue_train import KL_CONVENTION, fork_name
 
-# Stability statistic (defined once): std of the per-update policy term over a run. The policy
-# term is the clipped GRPO objective without the KL penalty (grpo_policy_loss "policy_term").
 STABILITY = "policy_term_std_over_updates"
 
 CONT_COLS = ["update", "reward_mean", "within_group_reward_std", "uninformative_group_fraction",
              "kl_sampled", "kl_penalty_k3", "response_length_mean", "policy_term", "entropy",
              "clip_fraction", "ratio_mean", "grad_norm", "any_step_skipped"]
 
-# Table 1: one-row standard-continuation summary.
 STD_SUMMARY_COLS = ["updates", "num_generations", "wall_seconds", "peak_vram_gb",
                     "reward_first", "reward_last", "kl_first", "kl_last",
                     "entropy_first", "entropy_last", "length_first", "length_last",
                     "within_group_std_mean", "uninformative_group_fraction_mean",
                     "mean_clip_fraction", "n_updates_step_skipped"]
 
-# Table 2: group-size study (overall, one row per K).
 GROUP_COLS = ["k", "n_groups", "total_generations", "informative_group_fraction",
               "mean_within_group_reward_std", "group_relative_signal_variance"]
 GROUP_DIFF_COLS = ["k", "difficulty", "n_groups", "informative_group_fraction",
                    "mean_within_group_reward_std", "group_relative_signal_variance"]
 
-# Table 3: normalization study. held-out metrics from the forks + the length-conditioned statistic
-# from the analytic diagnostic (clearly flagged as an illustration, not fork measurement).
 NORM_COLS = ["loss_type", "fork", STABILITY,
              "heldout_reward_mean", "heldout_kl_sampled", "heldout_length_mean",
              "heldout_length_std", "heldout_entropy_mean",
@@ -65,9 +43,6 @@ def _write_csv(path, header, rows):
 
 
 def per_update(train_path):
-    """Collapse the per-(update,epoch) train log to one row per update: rollout metrics are
-    constant within an update (take first); optimization metrics are averaged over the policy
-    epochs; a skipped step anywhere in the update sets any_step_skipped."""
     rows = read_jsonl(train_path)
     by_update = {}
     for r in rows:
@@ -112,7 +87,6 @@ def _eval_metrics(results_dir, name):
 
 
 def standard_summary_row(results_dir, name, summary):
-    """Table 1: one row from the per-update trajectory + the run summary."""
     train_path = results_dir / f"{name}_train.jsonl"
     if not train_path.exists():
         return None
@@ -137,7 +111,6 @@ def standard_summary_row(results_dir, name, summary):
 
 
 def group_size_tables(results_dir):
-    """Read group_size_study.json (written by analyze_group_size) -> overall + by-difficulty rows."""
     p = results_dir / "group_size_study.json"
     if not p.exists():
         return [], [], None
@@ -215,7 +188,6 @@ def main():
           f"task3_group_size_by_difficulty.csv, task3_normalization.csv, task3_summary.json to {results_dir}")
 
     if not args.tables_only:
-        # Lazy import so --tables-only never pulls in matplotlib.
         from scripts.plot_task3 import make_diagnostics, make_group_size, make_normalization, make_trajectory
         make_trajectory(results_dir, args.name)
         make_diagnostics(results_dir, args.name)

@@ -10,36 +10,13 @@ import torch
 from common.data import load_yaml, read_jsonl, repo_path
 from common.logging_utils import save_json
 
-# ---------------------------------------------------------------------------
-# Equal-generation group-size study (cache-based; no training, no model).
-#
-# The supplied cache holds K0=8 completions per prompt (confirmed schema: source_index:int,
-# prompt_id:str, generation_index:int, completion:str, completion_tokens:int,
-# terminated_with_eos:bool, clipped_at_max:bool, reward:float; 192 rows = 24 prompts x 8). To
-# compare K in {2,4,8} at EQUAL TOTAL GENERATIONS (the manual's requirement -- compare at equal
-# total generations, not equal numbers of prompts), each prompt's 8 completions are partitioned
-# into 8/K groups of size K: K=8 -> 1 group/prompt, K=4 -> 2, K=2 -> 4. Every condition consumes
-# the same 8 generations per prompt; only the group size (hence group count) changes. Groups never
-# mix prompts, so each is a valid within-prompt comparison.
-#
-# Advantage source: the group-relative signal here is computed LOCALLY (_relative_advantages) as a
-# reconstruction of the manual's definition A_k = (r_k - mu_r)/(sigma_r + eps), population sigma_r,
-# additive eps = advantage_eps (1e-6) from configs/grpo.yaml. It is deliberately NOT imported from
-# task3_grpo.grpo.group_relative_advantages, whose clamp-based normalization (grpo.py:22,
-# clamp_min(eps) = max(sigma,eps) rather than sigma+eps) is the suspected planted-defect site and
-# has not been independently validated against the manual formula. Keeping the analysis
-# self-contained makes these diagnostics correct regardless of the training helper's status.
-# ---------------------------------------------------------------------------
 
-CACHE_GROUP_SIZE = 8          # completions per prompt in the supplied K-cache (confirmed)
-REWARD_KEY = "reward"         # scalar RM reward per completion (confirmed cache field)
-COMPLETION_TOKENS_KEY = "completion_tokens"  # response length in tokens (confirmed cache field)
+CACHE_GROUP_SIZE = 8
+REWARD_KEY = "reward"
+COMPLETION_TOKENS_KEY = "completion_tokens"
 REQUIRED_KEYS = ("source_index", "prompt_id", "generation_index",
                  COMPLETION_TOKENS_KEY, REWARD_KEY, "clipped_at_max")
 
-# Difficulty binning rule, defined ONCE (manual: "Define the binning rule once"): a prompt's
-# difficulty proxy is the mean cached reward over its 8 completions; prompts are split into
-# terciles by the 33.3/66.7 percentiles across all cached prompts -> hard/medium/easy.
 DIFFICULTY_RULE = ("per-prompt mean cached reward over its 8 completions, split into terciles "
                    "(hard/medium/easy) by the 33.3/66.7 percentiles across all cached prompts")
 
@@ -49,7 +26,6 @@ def load_k8_cache(path):
     by_prompt = defaultdict(list)
     for row in rows:
         by_prompt[str(row["source_index"])].append(row)
-    # Instructor cache has 8 rows per prompt, one row per completion.
     bad = {pid: len(group) for pid, group in by_prompt.items() if len(group) < CACHE_GROUP_SIZE}
     if bad:
         raise ValueError(f"Expected at least K={CACHE_GROUP_SIZE} cached completions per prompt; short groups: {bad}")
@@ -71,17 +47,12 @@ def _tokens_for_prompt(rows) -> list[float]:
 
 
 def _relative_advantages(rewards: torch.Tensor, eps: float) -> torch.Tensor:
-    """Reconstruction of the manual GRPO advantage A_k = (r_k - mu_r)/(sigma_r + eps) for ONE
-    group: population std, ADDITIVE eps. Deliberately not task3_grpo.grpo.group_relative_advantages
-    (see module docstring). Degenerate group (sigma=0): numerator is 0 -> advantage 0."""
     mean = rewards.mean()
     std = rewards.std(unbiased=False)
     return (rewards - mean) / (std + eps)
 
 
 def regroup_equal_generation_budget(by_prompt, k: int):
-    """Partition each prompt's cached completions into groups of size k at equal total
-    generations. Returns a list of groups; each group is {prompt_id, rewards: [k floats]}."""
     if CACHE_GROUP_SIZE % k != 0:
         raise ValueError(
             f"k={k} must divide the cache group size {CACHE_GROUP_SIZE} for an equal-generation "
@@ -96,14 +67,12 @@ def regroup_equal_generation_budget(by_prompt, k: int):
 
 
 def _analyze_groups(groups, tol: float, eps: float) -> dict:
-    """Informative-group fraction, mean within-group reward std, and variance of the
-    group-relative signal (local reconstruction) over a set of groups."""
     stds, informative, all_adv = [], [], []
     for g in groups:
         r = torch.tensor(g["rewards"], dtype=torch.float32)
         s = float(r.std(unbiased=False))
         stds.append(s)
-        informative.append(s > tol)  # uninformative <=> std <= tol
+        informative.append(s > tol)
         all_adv.extend(_relative_advantages(r, eps).tolist())
     n = len(groups)
     return {
@@ -174,7 +143,6 @@ def run_group_size_study(config_path: str):
 
 
 def _write_tables(results_dir, result):
-    # Overall table: one row per K.
     with (results_dir / "task3_group_size.csv").open("w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(["k", "n_groups", "total_generations", "informative_group_fraction",
@@ -185,7 +153,6 @@ def _write_tables(results_dir, result):
                         f"{m['informative_group_fraction']:.6f}",
                         f"{m['mean_within_group_reward_std']:.6f}",
                         f"{m['group_relative_signal_variance']:.6f}"])
-    # Per-difficulty table: one row per (K, difficulty bin).
     with (results_dir / "task3_group_size_by_difficulty.csv").open("w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(["k", "difficulty", "n_groups", "informative_group_fraction",

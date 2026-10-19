@@ -1,13 +1,3 @@
-"""Aggregate Task 1 results into machine-readable tables. Pure read; no model.
-
-Reads the per-run JSONs written by evaluate.py and analyze_length.py and emits:
-  results/task1_dpo/task1_beta_table.csv        (standard + 3 beta forks)
-  results/task1_dpo/task1_length_stratum.csv    (per-stratum pref acc: std vs length-balanced)
-  results/task1_dpo/task1_wordlimit.csv         (word-limit compliance + gen length)
-  results/task1_dpo/task1_summary.json          (everything, combined)
-
-Run:  python -m scripts.aggregate_task1 --config configs/dpo.yaml
-"""
 
 from __future__ import annotations
 
@@ -76,7 +66,6 @@ def length_stratum_table(results_dir):
             row[f"{run}_pref_acc"] = ps.get("preference_accuracy")
             row[f"{run}_n"] = ps.get("n")
         rows.append(row)
-    # overall row
     overall = {"stratum": "OVERALL"}
     for run in LENGTH_RUNS:
         overall[f"{run}_pref_acc"] = data.get(run, {}).get("overall", {}).get("preference_accuracy")

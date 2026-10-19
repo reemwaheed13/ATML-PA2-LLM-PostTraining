@@ -4,8 +4,6 @@ import argparse
 
 from common.data import load_yaml, read_jsonl, repo_path
 from common.logging_utils import append_jsonl, save_json, wall_timer
-# Released judge: loader, fixed prompt, parser, single-example scorer. We DO NOT write a judge
-# prompt -- judge_one uses the supplied JUDGE_PROMPT and parse_json clamps to the 5 LABELS.
 from task4_safety.judge_responses import LABELS, judge_one, load_judge
 from task4_safety.generate import POLICY_ORDER, _done_ids
 
@@ -31,7 +29,7 @@ def judge_for_policy(cfg, tok, model, policy, out_path, resume=True):
     for r in pending:
         verdict = judge_one(tok, model, r["prompt"], r["response"], max_new_tokens=max_new)
         label = str(verdict["label"]).upper()
-        if label not in LABELS:  # parse_json already guarantees this; belt-and-braces
+        if label not in LABELS:
             label = "AMBIGUOUS"
         append_jsonl(out_path, {
             "xstest_id": int(r["xstest_id"]),
@@ -39,7 +37,7 @@ def judge_for_policy(cfg, tok, model, policy, out_path, resume=True):
             "benchmark_class": r["benchmark_class"],
             "type": r["type"],
             "label": label,
-            "confidence": float(verdict["confidence"]),  # AUDIT ONLY -- never a rate
+            "confidence": float(verdict["confidence"]),
             "rationale_tag": verdict.get("rationale_tag", ""),
         })
     print(f"[judge {policy}] done in {timer():.1f}s -> {out_path}")

@@ -12,7 +12,6 @@ from common.metrics import sample_entropy
 from common.models import load_policy, load_reward_model, load_tokenizer, reference_mode
 from common.precision import token_logprobs
 
-# Identical convention string to Task 1/2 so KL is comparable across tasks.
 KL_CONVENTION = "sampled_per_token_mean(sum_tokens/sum_response_tokens)"
 
 
@@ -33,9 +32,6 @@ def _chunks(seq, n):
 
 
 def _resolve_decoding(cfg):
-    # Held-out eval decoding is a shared Task 2/3 convention the author sets deliberately;
-    # there is NO default. Fail loudly if it is missing so the two tasks cannot silently
-    # diverge on the KL/length convention used for the cross-task synthesis.
     if "eval_do_sample" not in cfg:
         raise KeyError(
             "configs/grpo.yaml must set 'eval_do_sample' (bool) for held-out evaluation. "
@@ -53,12 +49,6 @@ def _resolve_decoding(cfg):
 
 
 def _generation_pass(policy, tokenizer, rm_model, rm_tok, rows, cfg, dec, gen_path, resume):
-    """One response per prompt -> reward, length, sampled KL, entropy, eos/truncation.
-
-    Per-prompt KL numerator (sum over valid tokens of logp_policy - logp_ref) and token count
-    are stored so the aggregate KL = sum(kl_sum)/sum(n_tokens) is resume-correct from the file,
-    exactly like Task 2's evaluator -- keeping KL byte-for-byte comparable across tasks.
-    """
     gen_bs = int(cfg.get("gen_batch_size", 8))
     reward_max_length = int(cfg["reward_max_length"])
 

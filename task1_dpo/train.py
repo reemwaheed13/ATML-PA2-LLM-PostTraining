@@ -42,25 +42,16 @@ def prepare_dpo_run(config_path: str, dataset_path: str | None = None, beta: flo
     path = dataset_path or cfg["paths"]["dpo_standard_train"]
 
     tokenizer = load_tokenizer(cfg["base_model"])
-    # Filter over-length prompts at load, BEFORE shuffling; record the report to
-    # results/task1_dpo/<run_name>_filter.json (exact retained/dropped indices).
     rows, filter_report = load_filtered_rows(
         path, tokenizer, int(cfg["max_sequence_length"]),
         results_dir=cfg["results_dir"], run_name=run_name,
     )
-    # Fork/smoke subset is drawn AFTER the filter, so --max-examples yields that
-    # many CLEAN (fit-in-window) examples with reproducible indices.
     if max_examples is not None:
         rows = rows[: int(max_examples)]
 
     model = load_policy(cfg, trainable=True, fresh_lora=True)
-    # Defensive guard (see README "Precision path"): PEFT 0.17.1 already keeps the
-    # LoRA adapter in fp32, so this is normally a no-op (n_fp32 == 0). It only acts
-    # if a version/config change produced fp16/bf16 trainable params.
     n_fp32 = upcast_trainable_to_fp32(model)
 
-    # Deterministic, resume-safe shuffle: fixed generator -> same order every launch,
-    # so skipping already-seen micro-batches on --resume is exact.
     gen = torch.Generator()
     gen.manual_seed(int(cfg["seed"]))
     loader = DataLoader(
@@ -90,7 +81,6 @@ def prepare_dpo_run(config_path: str, dataset_path: str | None = None, beta: flo
 
 
 def _save_train_state(path: Path, model, optimizer, scaler, micro, opt_step, seen):
-    """Atomic checkpoint: fp32 trainable weights + optimizer + scaler + RNG + progress."""
     state = {
         "trainable": {n: p.detach().cpu() for n, p in model.named_parameters() if p.requires_grad},
         "optimizer": optimizer.state_dict(),
@@ -101,7 +91,7 @@ def _save_train_state(path: Path, model, optimizer, scaler, micro, opt_step, see
     }
     tmp = str(path) + ".tmp"
     torch.save(state, tmp)
-    os.replace(tmp, str(path))  # atomic: a crash mid-write cannot corrupt the live file
+    os.replace(tmp, str(path))
 
 
 def _load_train_state(path: Path, model, optimizer, scaler, device):
@@ -112,7 +102,6 @@ def _load_train_state(path: Path, model, optimizer, scaler, device):
             if n in own:
                 own[n].copy_(t.to(dtype=own[n].dtype, device=own[n].device))
     optimizer.load_state_dict(state["optimizer"])
-    # Move optimizer state tensors onto the param device (load_state_dict leaves them on CPU).
     for st in optimizer.state.values():
         for k, v in st.items():
             if isinstance(v, torch.Tensor):
@@ -161,8 +150,6 @@ def run_training(
     summary_path = results_dir / f"{run_name}_summary.json"
     state_path = out / "train_state.pt"
 
-    # Fresh (non-resume) start: rotate the train log so a rerun never mixes stale
-    # rows with live ones. On --resume we keep appending to the existing log.
     if not resume and log_path.exists():
         log_path.unlink()
 
@@ -213,13 +200,12 @@ def run_training(
 
     for _epoch in range(epochs):
         for cb, rb in loader:
-            if micro < start_micro:  # fast-forward over already-trained micro-batches on resume
+            if micro < start_micro:
                 micro += 1
                 continue
             cb = {k: v.to(device) for k, v in cb.items()}
             rb = {k: v.to(device) for k, v in rb.items()}
 
-            # Policy log-probs (grad on), reference log-probs (adapter disabled, no grad).
             pc = sequence_logprobs(model, cb, cfg)[0]
             pr = sequence_logprobs(model, rb, cfg)[0]
             with torch.no_grad(), reference_mode(model):
@@ -238,7 +224,7 @@ def run_training(
 
             scaler.scale(loss / accum).backward()
             n = int(pc.shape[0])
-            _accumulate_window(window, loss, metrics, n)  # example-weighted across the window
+            _accumulate_window(window, loss, metrics, n)
             accum_count += 1
             seen += n
             micro += 1
@@ -253,7 +239,6 @@ def run_training(
                     _save_train_state(state_path, model, optimizer, scaler, micro, opt_step, seen)
                     model.save_pretrained(str(out))
 
-    # Flush a trailing partial accumulation window, if any.
     if accum_count > 0:
         opt_step = _optimizer_step(
             model, optimizer, scaler, max_norm, log_path, run_name,
@@ -280,9 +265,6 @@ def _new_window():
 
 
 def _accumulate_window(w, loss, metrics, n):
-    """Accumulate example-weighted sums over an accumulation window. dpo_loss returns
-    per-micro-batch MEANS, so weight each by its example count n to recover the true
-    window average (not the last-micro-batch value)."""
     w["examples"] += n
     w["loss"] += float(loss.detach()) * n
     w["logit_mean"] += float(metrics["logit_mean"]) * n
@@ -291,14 +273,11 @@ def _accumulate_window(w, loss, metrics, n):
 
 
 def _optimizer_step(model, optimizer, scaler, max_norm, log_path, run_name, opt_step, micro, seen, window, timer):
-    """Unscale -> clip -> (scaler) step. Logs grad_norm and the example-weighted
-    window-average metrics every step; non-finite grads are logged and the poisoned
-    update is skipped by the scaler, not applied."""
     scaler.unscale_(optimizer)
     grad_norm = torch.nn.utils.clip_grad_norm_(trainable_parameters(model), max_norm)
     found_inf = not bool(torch.isfinite(grad_norm))
 
-    scaler.step(optimizer)   # no-op if unscale_ found inf/nan grads
+    scaler.step(optimizer)
     scaler.update()
     optimizer.zero_grad(set_to_none=True)
 
@@ -319,7 +298,7 @@ def _optimizer_step(model, optimizer, scaler, max_norm, log_path, run_name, opt_
         "wall_s": timer(),
     }
     if found_inf:
-        rec["event"] = "nonfinite_grad"  # update skipped by GradScaler; weights unchanged
+        rec["event"] = "nonfinite_grad"
         append_jsonl(log_path, rec)
         return opt_step
     append_jsonl(log_path, rec)

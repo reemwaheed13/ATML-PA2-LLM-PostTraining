@@ -1,19 +1,3 @@
-"""Task 1 standard-run trajectory figure.
-
-Plots loss and preference accuracy against seen_examples (not opt_step). Reference
-lines at 0.693 (log 2) and 0.5. Saves to report/figures/.
-
-Exclusion rule (deliberate): a record belongs on the curve iff it carries a FULL
-accumulation window (window_examples == effective batch) with finite loss and
-accuracy -- i.e. metrics measured on a full batch of real examples at a real model
-state. This KEEPS the nonfinite_grad record (standard run, opt_step 58): the
-GradScaler discarded that gradient, but its loss/accuracy were still measured on 16
-real examples and, indexed on seen_examples (944), it is a legitimate point distinct
-from the re-used opt_step 58 at seen_examples 960. It DROPS the trailing partial
-window and nonfinite_loss records, which carry no valid window metrics.
-
-Run:  python -m scripts.plot_task1 --config configs/dpo.yaml --name standard
-"""
 
 from __future__ import annotations
 
@@ -41,11 +25,6 @@ def main():
     meta_p = results_dir / f"{args.name}_meta.json"
     full_window = int(load_json(meta_p).get("effective_batch")) if meta_p.exists() else None
 
-    # Keep every record whose metrics were measured on a FULL accumulation window,
-    # regardless of whether its gradient step was later discarded. This retains the
-    # nonfinite_grad window (real loss/accuracy at a real model state, distinct
-    # seen_examples) and drops the trailing partial window + metric-less
-    # nonfinite_loss rows (whose loss is a string, not a number).
     if full_window is None:
         full_window = max(
             (r["window_examples"] for r in rows if isinstance(r.get("window_examples"), int)),

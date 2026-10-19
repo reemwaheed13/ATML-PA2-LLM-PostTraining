@@ -25,17 +25,11 @@ from task3_grpo.grpo import (
     mask_truncated_sequences,
 )
 
-# Same KL averaging convention string Task 1/2 record, kept identical so Task 1/2/3 KL numbers
-# are comparable. sampled_kl == masked_mean, i.e. sum_t(logp_policy - logp_ref) over response
-# tokens / total response tokens. This is the REPORTED KL. The k3 penalty actually added to the
-# GRPO objective (exp(d)-d-1, d=ref-policy) is logged separately as kl_penalty_k3.
 KL_CONVENTION = "sampled_per_token_mean(sum_tokens/sum_response_tokens)"
 PRECISION = "base_fp16+lora_fp32_peft_native+autocast_fp16+gradscaler"
 
 
 def _report_trainable_dtypes(model, label):
-    """One-line trainable-parameter dtype histogram at load time -- a cheap sanity check.
-    The hard guard is the fp32 assertion inside common.models load_policy."""
     from collections import Counter
 
     counts = Counter()
@@ -76,11 +70,6 @@ def prepare_grpo_continuation(config_path: str):
     }
 
 
-# ---------------------------------------------------------------------------
-# Atomic checkpoint (policy + optimizer + scaler + RNG + progress). Critic-free,
-# so this is the single-model version of task2_ppo/continue_train._save_state: a
-# dying Colab session resumes exactly from the last saved update.
-# ---------------------------------------------------------------------------
 def _save_state(path: Path, policy, optimizer, scaler, update):
     state = {
         "policy_trainable": {n: p.detach().cpu() for n, p in policy.named_parameters() if p.requires_grad},
@@ -115,9 +104,6 @@ def _load_state(path: Path, policy, optimizer, scaler, device):
 
 
 def _group_reward_stats(rewards: torch.Tensor, group_ids: torch.Tensor, tol: float):
-    """Per-group reward dispersion. Returns (mean within-group std, fraction of uninformative
-    groups) where a group is uninformative iff its reward std <= tol (the same clamp floor used
-    inside group_relative_advantages, so 'uninformative' <=> advantage is exactly 0)."""
     stds = []
     for g in torch.unique(group_ids):
         r = rewards[group_ids == g]
@@ -180,13 +166,10 @@ def run_grpo(
     state_path = out / "train_state.pt"
 
     if not resume and log_path.exists():
-        log_path.unlink()  # fresh start: never mix stale rows with a rerun
+        log_path.unlink()
 
     scaler = make_grad_scaler(cfg)
 
-    # Deterministic prompt schedule: consume rl_prompt_train in fixed order, cycling if fewer
-    # prompts than updates. Recorded in meta so the exact prompt IDs are preserved. Each prompt
-    # spawns K completions (one group); group_ids tag which scheduled prompt each belongs to.
     def prompt_index(update, j):
         return (update * prompts_per_update + j) % len(prompt_rows)
 
@@ -239,8 +222,6 @@ def run_grpo(
         rows = [prompt_rows[prompt_index(update, j)] for j in range(prompts_per_update)]
         src_ids = [r.get("source_index", prompt_index(update, j)) for j, r in enumerate(rows)]
 
-        # Expand each scheduled prompt into K identical copies; sampling makes the completions
-        # differ. group_ids[i] = which scheduled prompt produced completion i.
         expanded_prompts, group_ids_list = [], []
         for gi, r in enumerate(rows):
             msgs = prompt_messages(r)
@@ -249,7 +230,6 @@ def run_grpo(
                 group_ids_list.append(gi)
         group_ids = torch.tensor(group_ids_list, device=device)
 
-        # --- Rollout (on-policy, no grad) --------------------------------------
         gen = batch_generate(
             policy, tokenizer, expanded_prompts, max_prompt_length, max_completion_length,
             temperature=temperature, top_p=top_p, do_sample=do_sample,
@@ -258,12 +238,9 @@ def run_grpo(
         attn = gen["attention_mask"]
         P = gen["prompt_width"]
         response_ids = gen["response_ids"]
-        eos_mask = gen["response_mask"].to(device)  # EOS-trimmed; used for reported KL/length
+        eos_mask = gen["response_mask"].to(device)
         responses = gen["responses"]
 
-        # Fixed rollout quantities (old/ref log-probs) in eval mode so LoRA dropout is OFF:
-        # old_logp is the deterministic behavior log-prob. With policy_epochs=1 the single
-        # update-epoch ratio is ~1 up to the dropout applied in the training-mode new_logp.
         policy.eval()
         with torch.no_grad():
             old_logp = token_logprobs(policy, sequences, attn, P, response_ids, cfg)[0].detach()
@@ -273,15 +250,8 @@ def run_grpo(
                 reward_model, reward_tok, expanded_prompts, responses, reward_max_length
             ).to(device)
 
-        # Terminal reward = RM score. GRPO does NOT shape per-token KL into the reward (unlike
-        # PPO); the KL penalty is a separate term inside grpo_policy_loss. Group-relative
-        # advantage is one scalar per completion, standardized within each prompt group.
         seq_adv = group_relative_advantages(rm_scores, group_ids, eps=adv_eps).detach()
 
-        # Loss mask: start from the EOS-trimmed response mask, then (optionally) zero out any
-        # completion that hit max length without terminating, so truncated completions get no
-        # gradient. They still inform the group baseline above (reward + advantage computed over
-        # all K), matching "max-length completions masked from the training loss".
         loss_mask = eos_mask
         if mask_truncated:
             loss_mask = mask_truncated_sequences(loss_mask, gen["truncated"])
@@ -294,7 +264,6 @@ def run_grpo(
         adv_var = float(seq_adv.var(unbiased=False)) if seq_adv.numel() > 1 else 0.0
         n_masked_completions = int((loss_mask.sum(-1) == 0).sum())
 
-        # --- GRPO update epochs (one forward per opt step) ---------------------
         for epoch in range(policy_epochs):
             policy.train()
             with autocast_context(cfg):
@@ -310,7 +279,7 @@ def run_grpo(
             scaler.unscale_(optimizer)
             grad_norm = torch.nn.utils.clip_grad_norm_(trainable_parameters(policy), max_grad_norm)
             step_skipped = not bool(torch.isfinite(grad_norm))
-            scaler.step(optimizer)  # GradScaler no-ops the step whose grads held inf/nan
+            scaler.step(optimizer)
             scaler.update()
 
             rec = {
@@ -344,11 +313,10 @@ def run_grpo(
                 "wall_s": timer(),
             }
             if step_skipped:
-                rec["event"] = "nonfinite_grad"  # step discarded by GradScaler; weights unchanged
+                rec["event"] = "nonfinite_grad"
             append_jsonl(log_path, rec)
             opt_iter += 1
 
-        # Periodic + final checkpoint.
         if (update + 1) % max(1, n_updates // 4) == 0 or update + 1 == n_updates:
             _save_state(state_path, policy, optimizer, scaler, update + 1)
             policy.save_pretrained(str(out))
@@ -378,8 +346,6 @@ def fork_name(loss_type: str) -> str:
 
 
 def run_fork(config_path: str, loss_type: str, resume: bool = False, force: bool = False):
-    """Short continuation fork from the identical midpoint, switching only the sequence
-    normalization (loss_type). Skips if already trained so each normalization runs once."""
     cfg = load_yaml(config_path)
     name = fork_name(loss_type)
     summary_path = repo_path(cfg["results_dir"]) / f"{name}_summary.json"

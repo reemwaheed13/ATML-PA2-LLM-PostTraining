@@ -1,18 +1,3 @@
-"""Task 3 (GRPO) report figures. Pure read; no model, no new experiments.
-
-Four figures to report/figures/ (300 dpi, axis labels with units, legend, no title --
-the report caption carries the title):
-  task3_standard_trajectory.png   2x2: reward, KL, entropy, clip fraction vs update
-  task3_standard_diagnostics.png  2x2: policy term, grad norm, response length, and the
-                                  group-informativeness panel (within-group reward std +
-                                  uninformative-group fraction) vs update
-  task3_group_size.png            1x2: informative-group fraction and group-relative-signal
-                                  variance vs K, overall and per difficulty bin
-  task3_normalization.png         1x2: held-out response length for the two forks (measured)
-                                  and the length-conditioned gradient ratios (analytic illustration)
-
-Run:  python -m scripts.plot_task3 --config configs/grpo.yaml --name standard
-"""
 
 from __future__ import annotations
 
@@ -92,7 +77,6 @@ def make_diagnostics(results_dir, name):
     ax_len.set_ylabel("response length (tokens)")
     ax_len.set_xlabel("update")
 
-    # Group-informativeness panel: within-group reward std (left) + uninformative fraction (right).
     ax_info.plot(x, [r["within_group_reward_std"] for r in rows], color="tab:blue", marker=".",
                  label="within-group reward std")
     ax_info.set_ylabel("within-group reward std")
@@ -151,7 +135,6 @@ def make_group_size(results_dir):
 def make_normalization(results_dir):
     fig, (ax_len, ax_grad) = plt.subplots(1, 2, figsize=(11, 4.5))
 
-    # Left: MEASURED held-out response length for the two forks (from evaluate.py).
     labels, means, stds = [], [], []
     for loss_type in ("grpo", "dr_grpo"):
         p = results_dir / f"{fork_name(loss_type)}_eval.json"
@@ -166,7 +149,6 @@ def make_normalization(results_dir):
     ax_len.set_xlabel("normalization (measured on forks)")
     ax_len.grid(True, alpha=0.3, axis="y")
 
-    # Right: ANALYTIC length-conditioned gradient ratios (fixed K-cache, not fork data).
     p = results_dir / "norm_diagnostic.json"
     if p.exists():
         diag = load_json(p)

@@ -10,23 +10,18 @@ from common.generation import batch_generate
 from common.logging_utils import append_jsonl, save_json, set_seed, wall_timer
 from common.models import load_policy, load_tokenizer
 
-# The four FIXED Task 4 policies, in fixed order. No beta-sweep / clip-KL fork / normalization
-# fork is reachable: sft has no adapter, and the other three resolve ONLY to the standard
-# Step-1 adapters in configs/feedback.yaml (task1/2/3 .../standard). Nothing else is accepted.
 POLICY_ORDER = ("sft", "dpo", "ppo", "grpo")
 
 
 def policy_adapter(cfg, policy_name: str):
     if policy_name == "sft":
-        return None  # untouched Qwen2.5-1.5B-Instruct, NO adapter
+        return None
     if policy_name not in ("dpo", "ppo", "grpo"):
         raise KeyError(
             f"Unknown Task 4 policy {policy_name!r}; the four fixed policies are {POLICY_ORDER} "
             "(no beta/clip/KL/normalization forks)."
         )
     adapter = cfg["policies"][policy_name]
-    # Guard against a fork path sneaking into the config: the three standard adapters must end in
-    # '/standard'. A beta/clip/kl/norm fork directory would not, so this fails loudly.
     if not str(adapter).rstrip("/").endswith("standard"):
         raise ValueError(
             f"Task 4 policy {policy_name!r} must be the Step-1 standard adapter, got {adapter!r}. "
@@ -40,8 +35,6 @@ def load_xstest(cfg):
 
 
 def _resolve_decoding(cfg):
-    # Shared Task 2/3/4 deterministic-greedy convention; NO default. Fail loudly if unset so the
-    # three tasks cannot silently diverge on decoding (mirrors task3_grpo/evaluate._resolve_decoding).
     if "eval_do_sample" not in cfg:
         raise KeyError(
             "configs/feedback.yaml must set 'eval_do_sample' (bool) for Task 4 generation. "
@@ -49,7 +42,7 @@ def _resolve_decoding(cfg):
         )
     return {
         "do_sample": bool(cfg["eval_do_sample"]),
-        "temperature": 0.0,  # ignored when do_sample is False; recorded for provenance
+        "temperature": 0.0,
         "top_p": 1.0,
         "max_new_tokens": int(cfg["safety_max_new_tokens"]),
         "max_prompt_length": int(cfg.get("safety_max_prompt_length", cfg.get("max_prompt_length", 256))),
@@ -57,8 +50,6 @@ def _resolve_decoding(cfg):
 
 
 def _done_ids(path):
-    """xstest_ids already written. Crash-tolerant: skips a truncated final line left by a
-    disconnect mid-write (that prompt is simply regenerated)."""
     if not path.exists():
         return set()
     done = set()
@@ -70,15 +61,11 @@ def _done_ids(path):
             try:
                 done.add(int(json.loads(line)["xstest_id"]))
             except (json.JSONDecodeError, KeyError, ValueError):
-                continue  # partial/garbled trailing line -> regenerate that prompt
+                continue
     return done
 
 
 def generate_for_policy(cfg, policy_name, dec, out_path, batch_size=8, resume=True):
-    """One deterministic response per XSTest prompt for one policy. Resumable: appends one JSONL
-    record per prompt and skips any xstest_id already present, so a disconnect mid-policy only
-    recomputes the current batch (set batch_size=1 for strict per-prompt durability). Prompts are
-    processed in fixed CSV order, so the file stays in that order across restarts."""
     if not resume and out_path.exists():
         out_path.unlink()
     done = _done_ids(out_path)
